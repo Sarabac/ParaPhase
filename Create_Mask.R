@@ -1,16 +1,16 @@
 #W.DIR <- dirname(rstudioapi::getActiveDocumentContext()$path)
-W.DIR = "L:/Lucas/phenology/_fParaPhase"
+W.DIR = "L:/Lucas/phenology/ParaPhase"
 setwd(W.DIR)
 library(tidyverse)
 library(raster)
 library(sp)
 library(rgdal)
+library(DBI)
 ##### VARIABLES ######
-MODIS.MODEL = "_input/MODIS/MOD09Q1_NDVI_2010_001.tif"
-FIELD = "_input/LPIS/Brandenburg/FBS2014_EPSG25833.shp"
-OUTPUT = "Brandenburg2"
-
-
+MODIS.MODEL = "L:/Lucas/phenology/_fParaPhase/_input/MODIS/MOD09Q1_NDVI_2010_001.tif"
+FIELD = "L:/Lucas/phenology/_fParaPhase/_input/LPIS/Brandenburg/FBS2014_EPSG25833.shp"
+OUTPUT = "output/Brandenburg2"
+OUT.SQLITE = "output/Pixels_Time"
 
 ###### IMPORT DATA ########
 MRaster = raster(MODIS.MODEL)
@@ -30,44 +30,41 @@ pixels = extract(cellraster, field, df=TRUE,weight=TRUE,
                  normalizeWeights=FALSE)
 saveRDS(pixels, paste(OUTPUT, ".rds", sep=""))
 
-#pixels = readRDS("pixels_Brandenburg.rds")
-
+#pixels = readRDS("output/pixels_Brandenburg.rds")
+### Create the mask and Pixel_id raster
 weightValue = pixels %>% 
   group_by(layer) %>% #some pixels are on 2 fields
-  summarise(weight = max(weight)) %>% # take only the max value
+  filter(weight==max(weight)) %>% # take only the max value
+  filter(row_number()==1) %>% #some max are the same, assign to the first layer
+  ungroup() %>% 
   right_join(CellData, by = "layer") %>% # the other pixel receive weight = 0
   mutate(value = coalesce(weight, W)) %>% 
   arrange(layer)# make sur this is the good cell order
 
 WeightRaster = setValues(EmptyRaster, weightValue$value)
 #plot(WeightRaster)
-writeRaster(WeightRaster, paste(OUTPUT, ".tif", sep=""))
+#plot(FieldIDRaster)
+writeRaster(WeightRaster, paste(OUTPUT, "_mask.tif", sep=""))
+writeRaster(cellraster, paste(OUTPUT, "_pixelid.tif", sep=""))
 
+### Save field data in the database ###
+FieldData = field@data %>% 
+  mutate(Field_ID = row_number())
+PixelData = weightValue %>% # do not use the 'pixel' table
+  # because 'weightValue' have been filtrer
+  # the doubles have been renoved
+  dplyr::select(Field_ID=ID, Pixel_ID=layer, weight) %>% 
+  drop_na()
 
+conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, ".sqlite", sep=""))
+dbWriteTable(conn, "Field", FieldData, overwrite=TRUE)
+dbWriteTable(conn, "Pixel", PixelData, overwrite=TRUE)
 
-####### TRASH ####
-
-#NullRaster[pixels$ID] = pixels$weight
-#plot(WeightRaster)
-#fieldArea = rgeos::gArea(field, byid = TRUE)
-#enframe(fieldArea)
-
-#area(ModelRaster)
-
-
-
-#pix = brick(AllStack)
-#pixels = extract(pix, field, df=TRUE, weight=TRUE)
-
-#Vcell = velox::velox(cellraster)
-#VSelectCells = Vcell$extract(field, df=TRUE, small = TRUE)
-#VSelectCells
-
-#cellnum = cellFromPolygon(AllStack[[1]], field, weights = TRUE)
-#polyg = rasterToPolygons(AllStack)
-
-#VS = velox::velox(AllStack)
-#res = VS$extract(field, df=TRUE, small = TRUE, fun = function(x){median(x, 0.5,na.rm = TRUE)[[1]]} )
-
-#pol = VS$rasterize(spdf = field, field = "GROESSE_P")
-#VS$nbands
+dbExecute(conn, "
+           CREATE VIEW IF NOT EXISTS PixelField
+           AS
+           Select distinct f.*, p.Pixel_ID, p.weight
+           from Field f inner join Pixel p
+           on f.Field_ID=p.Field_ID
+           ")
+dbDisconnect(conn)

@@ -13,7 +13,7 @@ FIELD = "_input/LPIS/Brandenburg/FBS2014_EPSG25833.shp"
 PHASE.DIR="L:/Lucas/phenology/PhenoWin/_DOY"
 MODEL = "Brandenburg2.tif"
 TH = 0.7
-OUT.SQLITE = "Pixels_Time3"
+OUT.SQLITE = "Pixels_Time"
 YEARS = c(2015)
 
 ######## FUNCTIONS ########
@@ -31,7 +31,7 @@ extract_date = function(dat){
 
 conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, "sqlite", sep="."))
 #create the view that link Phases and NDVI
-dbGetQuery(conn, "
+dbExecute(conn, "
            CREATE VIEW IF NOT EXISTS pixel_date
             AS
             Select distinct n.pixel_id, n.date, NDVI, Crop, P
