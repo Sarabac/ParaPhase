@@ -1,20 +1,13 @@
 #W.DIR <- dirname(rstudioapi::getActiveDocumentContext()$path)
-W.DIR = "L:/Lucas/phenology/_fParaPhase"
+W.DIR = "L:/Lucas/phenology/ParaPhase"
 setwd(W.DIR)
+source("Variables.R")
 library(tidyverse)
 library(raster)
 library(sp)
 library(rgdal)
 library(lubridate)
 library(DBI)
-##### VARIABLES ######
-MODIS.DIR = "_input/MODIS/"
-FIELD = "_input/LPIS/Brandenburg/FBS2014_EPSG25833.shp"
-PHASE.DIR="L:/Lucas/phenology/PhenoWin/_DOY"
-MODEL = "Brandenburg2.tif"
-TH = 0.7
-OUT.SQLITE = "Pixels_Time"
-YEARS = c(2015)
 
 ######## FUNCTIONS ########
 extract_n = function(dat, n){
@@ -32,7 +25,7 @@ extract_date = function(dat){
 conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, "sqlite", sep="."))
 #create the view that link Phases and NDVI
 dbExecute(conn, "
-           CREATE VIEW IF NOT EXISTS pixel_date
+           CREATE VIEW IF NOT EXISTS NDVIPhase
             AS
             Select distinct n.pixel_id, n.date, NDVI, Crop, P
             from NDVI n inner join DOY p
@@ -62,8 +55,11 @@ infos = rbind(modis, phase) %>% spread("key", "value") %>%
   filter(Year%in%YEARS) # filter on the selected year
 
 # Import the mask and apply the threshold
-modelMask = raster(MODEL) > TH # create a boolean raster
+# create a boolean raster
+modelMask = raster(paste(OUTPUT, "_mask.tif", sep="")) > TH
 
+PixelID = raster(paste(OUTPUT, "_pixelid.tif", sep=""))
+names(PixelID) = "Pixel_ID"
 
 len = dim(infos)[1]
 pb <- txtProgressBar(min=0, max=len, style=3) 
@@ -72,16 +68,15 @@ for(i in 1:len){
   info = infos[i,c(!is.na(infos[i,]))]
   
   Mraster = raster(info$dir)
+  names(Mraster) = info$source
   #make the raster fit the mask
   Mrepro = projectRaster(Mraster, modelMask)
+  Mstack = stack(PixelID, Mrepro)
   #plot(AllStack)
-  masked = mask(Mrepro, modelMask, maskvalue=FALSE)
+  masked = mask(Mstack, modelMask, maskvalue=FALSE)
   #plot(masked)
   # extract all the pixels except the NA values
   RawData = as.data.frame(masked, na.rm = TRUE) %>% 
-    rename(!!info$source := 1) %>% # the name of the value
-    rownames_to_column("PIXEL_ID") %>% # keep the pixel id
-    mutate(PIXEL_ID = as.numeric(PIXEL_ID)) %>% 
     cbind(dplyr::select(info, -source, -dir)) %>% # infos are new columns
     extract_date() #create the date column
   # save the data in the database

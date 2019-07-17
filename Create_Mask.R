@@ -1,16 +1,14 @@
 #W.DIR <- dirname(rstudioapi::getActiveDocumentContext()$path)
 W.DIR = "L:/Lucas/phenology/ParaPhase"
 setwd(W.DIR)
+source("Variables.R")
 library(tidyverse)
 library(raster)
 library(sp)
 library(rgdal)
 library(DBI)
 ##### VARIABLES ######
-MODIS.MODEL = "L:/Lucas/phenology/_fParaPhase/_input/MODIS/MOD09Q1_NDVI_2010_001.tif"
-FIELD = "L:/Lucas/phenology/_fParaPhase/_input/LPIS/Brandenburg/FBS2014_EPSG25833.shp"
-OUTPUT = "output/Brandenburg2"
-OUT.SQLITE = "output/Pixels_Time"
+
 
 ###### IMPORT DATA ########
 MRaster = raster(MODIS.MODEL)
