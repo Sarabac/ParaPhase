@@ -53,6 +53,7 @@ phase = tibble(dir = list.files(PHASE.DIR, "\\.tif$", full.names = T))%>%
 
 infos = rbind(modis, phase) %>% spread("key", "value") %>% 
   filter(Year%in%YEARS) # filter on the selected year
+# the ligne above can be removed to process all the data
 
 # Import the mask and apply the threshold
 # create a boolean raster
@@ -64,7 +65,7 @@ names(PixelID) = "Pixel_ID"
 len = dim(infos)[1]
 pb <- txtProgressBar(min=0, max=len, style=3) 
 for(i in 1:len){
-  #remove the useless columns
+  #select the good ligne and remove the useless columns
   info = infos[i,c(!is.na(infos[i,]))]
   
   Mraster = raster(info$dir)

@@ -42,13 +42,13 @@ weightValue = pixels %>%
 WeightRaster = setValues(EmptyRaster, weightValue$value)
 #plot(WeightRaster)
 #plot(FieldIDRaster)
-writeRaster(WeightRaster, paste(OUTPUT, "_mask.tif", sep=""))
-writeRaster(cellraster, paste(OUTPUT, "_pixelid.tif", sep=""))
+writeRaster(WeightRaster, paste(OUTPUT, "_mask.tif", sep="")) # mask raster
+writeRaster(cellraster, paste(OUTPUT, "_pixelid.tif", sep=""))# pixel ID raster
 
 ### Save field data in the database ###
 FieldData = field@data %>% 
   mutate(Field_ID = row_number())
-PixelData = weightValue %>% # do not use the 'pixel' table
+PixelData = weightValue %>% # do not use the 'pixel' dataframe
   # because 'weightValue' have been filtrer
   # the doubles have been renoved
   dplyr::select(Field_ID=ID, Pixel_ID=layer, weight) %>% 
@@ -58,6 +58,7 @@ conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, ".sqlite", sep=""))
 dbWriteTable(conn, "Field", FieldData, overwrite=TRUE)
 dbWriteTable(conn, "Pixel", PixelData, overwrite=TRUE)
 
+# the view that link pixels and the LPIS shapefile
 dbExecute(conn, "
            CREATE VIEW IF NOT EXISTS PixelField
            AS

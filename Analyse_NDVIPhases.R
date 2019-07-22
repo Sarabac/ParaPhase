@@ -12,12 +12,30 @@ NDVI = tbl(conn, "NDVI") %>%
   collect()
 Phase = tbl(conn, "DOY") %>% 
   select(Pixel_ID,Crop,Date,P) %>% 
+  arrange(Pixel_ID,Crop,Date) %>% 
   filter(Crop=="201") %>% 
-  collect()
+  collect() %>% 
+  group_by(Pixel_ID,Crop) %>% 
+  mutate(Porder=row_number()) %>% 
+  ungroup()
 dbDisconnect(conn)
 
-g = full_join(NDVI, Phase, by=c("Pixel_ID", "Date"))
-  
+g = full_join(NDVI, Phase, by=c("Pixel_ID", "Date"))%>%
+  group_by(Pixel_ID) %>% 
+  arrange(Pixel_ID, Date, P) %>% 
+  mutate(next_P = P) %>% 
+  fill(P, .direction ="down")%>%
+  fill(next_P, .direction ="up") %>% 
+  mutate(Period = paste(P, next_P, sep="_"))
+
+clean = res2 %>%
+  drop_na(P, next_P) %>% 
+  filter(P!=next_P) %>% 
+  mutate(Period = as.factor(Period))
+
+with_day = clean %>% 
+  group_by(Pixel_ID, P_order) %>% 
+  mutate(nday=lubridate::)
 
 DOY = Phase %>% 
   arrange(Pixel_ID,Crop,Date,P) %>% 
