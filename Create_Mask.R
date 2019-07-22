@@ -4,17 +4,39 @@ setwd(W.DIR)
 source("Variables.R")
 library(tidyverse)
 library(raster)
-library(sp)
+library(sf)
 library(rgdal)
 library(DBI)
-##### VARIABLES ######
-
 
 ###### IMPORT DATA ########
-MRaster = raster(MODIS.MODEL)
-field = readOGR(FIELD) %>% 
-  spTransform(crs(MRaster))
+shapefiles = tibble(direc = list.files(LPIS.DIR, ".*\\.shp",
+                        full.names = TRUE)) %>% 
+  filter(str_detect(direc, "Uckermark")) %>% #small region for testing
+  pull(direc) %>%
+  sapply(st_read) %>% sapply(function(x){mutate(x, Year_ID = row_number())})
 
+
+shape = NULL
+for (i in 1:length(shapefiles)){
+  sha = shapefiles[[i]]
+  if("K_ART"%in%colnames(sha)){sha = rename(sha, NU_CODE=K_ART)}
+  sh = sha %>% transmute(Year_ID, NU_CODE=as.factor(NU_CODE), ANTRAGSJAH)
+  if(is.null(shape)){
+    shape = sh
+  }else{
+    shape = rbind(sh, shape)
+  }
+}
+field = shape %>% mutate(Field_ID = row_number())
+
+conn = connect(OUT.SQLITE)
+dbWriteTable(conn, "Field", st_drop_geometry(field),
+             overwrite=TRUE)
+dbDisconnect(conn)
+
+MRaster = raster(MODIS.MODEL)
+#field = readOGR(FIELD) %>% spTransform(crs(MRaster))
+field = st_transform(field, crs(MRaster))
 
 ModelRaster = crop(MRaster, field)
 #plot(Mcropped)
@@ -54,7 +76,7 @@ PixelData = weightValue %>% # do not use the 'pixel' dataframe
   dplyr::select(Field_ID=ID, Pixel_ID=layer, weight) %>% 
   drop_na()
 
-conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, ".sqlite", sep=""))
+
 dbWriteTable(conn, "Field", FieldData, overwrite=TRUE)
 dbWriteTable(conn, "Pixel", PixelData, overwrite=TRUE)
 
