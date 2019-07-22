@@ -1,5 +1,6 @@
 MODIS.DIR = "L:/Lucas/phenology/_fParaPhase/_input/MODIS"
 PHASE.DIR="L:/Lucas/phenology/PhenoWin/_DOY"
+LPIS.DIR="L:\Lucas\phenology\_fParaPhase\_input\LPIS\Brandenburg"
 MODEL = "Brandenburg2.tif" #name ofthe mask produced by "create mask"
 TH = 0.75 # threshold for the mask
 OUTPUT = "output/Brandenburg2"
