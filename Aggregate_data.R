@@ -21,9 +21,11 @@ extract_date = function(dat){
     mutate(Date = as.character(Date))
 }
 
-ExtractRaster = function(files, IDfile, value_name, PixelID, maskRaster){
+ExtractRaster = function(files, IDfile, value_name,
+                         PixelID, maskRaster){
   
   Mraster = stack(files, quick=TRUE)
+  
   names(Mraster) = IDfile
   #make the raster fit the mask
   Mrepro = projectRaster(Mraster, maskRaster)
@@ -48,7 +50,7 @@ conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, "sqlite", sep="."))
 
 PixelCrop = tbl(conn, "PixelCrop")
 LPISyearCrop = PixelCrop %>%
-  dplyr::select(Year, Crop) %>% distinct() %>% collect() %>% drop_na()
+  dplyr::select(Year, Crop,Winter) %>% distinct() %>% collect() %>% drop_na()
 
 modis = tibble(dir=list.files(MODIS.DIR, "_NDVI_.*\\.tif$", full.names = TRUE)) %>% 
   mutate(name = basename(dir)) %>% 
@@ -70,7 +72,8 @@ names(PixelID) = "Pixel_ID"
 CellFrame = tibble(Pixel_ID=1:ncell(PixelID))
 
 #### Extract NDVI
-YearList = unique(LPISyearCrop$Year)
+# extract also the previous Year for winter Crops
+YearList = unique(c(LPISyearCrop$Year, LPISyearCrop$Year-1))
 pb <- txtProgressBar(min=0, max=length(YearList), style=3) 
 for(current_Year in YearList){
   infoNDVI = filter(modis, Year==current_Year&source=="NDVI")
@@ -86,7 +89,8 @@ for(current_Year in YearList){
     rawData = ExtractRaster(infoNDVI$dir, infoNDVI$IDfile,
                             "NDVI", PixelID, maskRaster)
     ndvi = inner_join(rawData, infoNDVI, by="IDfile") %>%
-      dplyr::select(Pixel_ID, Date, NDVI)
+      dplyr::select(Pixel_ID, Date, NDVI) %>% 
+      mutate(NDVI=NDVI/10000) #retrive the good NDVI from MODIS
     dbWriteTable(conn, "NDVI", ndvi, append=TRUE)
   }
   setTxtProgressBar(pb, getTxtProgressBar(pb)+1)
@@ -98,12 +102,20 @@ pb <- txtProgressBar(min=0, max=nrow(LPISyearCrop), style=3)
 for(i in 1:nrow(LPISyearCrop)){
   current_Year = LPISyearCrop$Year[i]
   current_Crop = LPISyearCrop$Crop[i]
-  infoPhase = filter(phase, Year==current_Year&
-                       Crop==current_Crop&
-                      source=="Pheno")
+  winter = LPISyearCrop$Winter[i]
+  if(winter){#should consider the year before for winter crop
+    selectedYear=c(current_Year, current_Year-1)
+  }else{
+    selectedYear=c(current_Year)
+  }
   
   print(paste("Phase", "Year:", current_Year, "Crop:", current_Crop))
-  if(nrow(infoPhase)){
+  
+  for (CY in selectedYear){
+    infoPhase = filter(phase, Year==CY&
+                         Crop==current_Crop&
+                         source=="Pheno")
+  
     
     selectedID = PixelCrop %>%
       filter(Year==current_Year& Crop==current_Crop& weight>TH) %>%
@@ -111,14 +123,27 @@ for(i in 1:nrow(LPISyearCrop)){
     maskValues = CellFrame %>%
       mutate(value = if_else(Pixel_ID%in%selectedID, TRUE, FALSE))
     maskRaster = setValues(PixelID, maskValues$value)
-    rawData = ExtractRaster(infoPhase$dir, infoPhase$IDfile,
+    
+    if(!winter){
+      infoP = infoPhase # keep everything
+    }else if(CY==current_Year-1){
+      infoP= infoPhase %>% # remove phases before september
+        filter(quantile(stack(dir, quick=TRUE), 0.5) >240)#days
+    }else{#CY==current_Year
+      infoP= infoPhase %>% # remove phases after september
+        filter(quantile(stack(dir, quick=TRUE), 0.5) <=240)#days
+    }
+    if(!nrow(infoP)){next}
+    
+    rawData = ExtractRaster(infoP$dir, infoP$IDfile,
                             "DOY", PixelID, maskRaster)
-    Phase = inner_join(rawData, infoPhase, by="IDfile") %>%
+    Phase = inner_join(rawData, infoP, by="IDfile") %>%
       extract_date() %>% 
       dplyr::select(Pixel_ID, Date, Phase=P, Crop)
     dbWriteTable(conn, "Phase", Phase, append=TRUE)
-  }
+  
   setTxtProgressBar(pb, i)
+  }
 }
 
 

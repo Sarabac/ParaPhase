@@ -59,10 +59,11 @@ dbWriteTable(conn, "Pixel",
              rename(pixels, Field_ID=ID, Pixel_ID=layer),
              overwrite=TRUE)
 # the view to create the masks
+dbExecute(conn, "drop view IF EXISTS PixelCrop")
 dbExecute(conn, "
           CREATE VIEW IF NOT EXISTS PixelCrop
           AS Select distinct
-          Pixel_ID, PhenoID as Crop, Year,
+          Pixel_ID, PhenoID as Crop, Year, Winter,
           max(weight) AS  weight
           from Field f inner join Pixel p
           on f.Field_ID=p.Field_ID
