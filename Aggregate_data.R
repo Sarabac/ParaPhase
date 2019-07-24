@@ -20,17 +20,25 @@ extract_date = function(dat){
     mutate(Date = as.Date(paste(Year,"01-01",sep="-")) + days(DOY - 1)) %>% 
     mutate(Date = as.character(Date))
 }
+
+ExtractRaster = function(files, IDfile, value_name, PixelID, maskRaster){
+  
+  Mraster = stack(files, quick=TRUE)
+  names(Mraster) = IDfile
+  #make the raster fit the mask
+  Mrepro = projectRaster(Mraster, maskRaster)
+  Mstack = stack(PixelID, Mrepro)
+  #plot(AllStack)
+  masked = mask(Mstack, maskRaster, maskvalue=FALSE)
+  #plot(masked)
+  # extract all the pixels except the NA values
+  return(as.data.frame(masked, na.rm = TRUE)%>%
+           gather("IDfile",!!value_name, -Pixel_ID))
+}
 ###### Connect to Database
 
 conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, "sqlite", sep="."))
-#create the view that link Phases and NDVI
-dbExecute(conn, "
-           CREATE VIEW IF NOT EXISTS NDVIPhase
-            AS
-            Select distinct n.pixel_id, n.date, NDVI, Crop, P
-            from NDVI n inner join DOY p
-            on n.pixel_id=p.pixel_id and n.date=p.date
-           ")
+
 
 ###### IMPORT DATA ########
 #### Rule for the mandatory column name for the raster 'infos'
@@ -38,51 +46,129 @@ dbExecute(conn, "
 # day of the year: 'DOY', year : 'YEAR'
 #### it is possible to add any other culumn
 
+PixelCrop = tbl(conn, "PixelCrop")
+LPISyearCrop = PixelCrop %>%
+  dplyr::select(Year, Crop) %>% distinct() %>% collect() %>% drop_na()
+
 modis = tibble(dir=list.files(MODIS.DIR, "_NDVI_.*\\.tif$", full.names = TRUE)) %>% 
   mutate(name = basename(dir)) %>% 
-  mutate(Year=extract_n(name,4), DOY=extract_n(name,3)) %>% 
-  mutate(source="NDVI") %>% 
-  gather("key", "value", -dir) # to fusion with the phase table
+  mutate(Year=extract_n(name,4), DOY=extract_n(name,3)) %>%
+  extract_date() %>% 
+  mutate(source="NDVI")%>% 
+  mutate(IDfile = paste("X", row_number(), sep=""))
 phase = tibble(dir = list.files(PHASE.DIR, "\\.tif$", full.names = T))%>% 
   mutate(name = basename(dir)) %>%
   mutate(Crop = extract_n(name, 3), Year = extract_n(name, 4),
           # Phenology have a lenght 1 or 2
           P = coalesce(extract_n(name, 2),extract_n(name, 1))) %>% 
-  mutate(source="DOY")%>% 
-  gather("key", "value", -dir)# to fusion with the modis table
+  mutate(source="Pheno")%>% 
+  mutate(IDfile = paste("X", row_number(), sep=""))
+#infos = bind_rows(modis, phase) %>% mutate(IDfile = paste("X", row_number(), sep=""))
 
-infos = rbind(modis, phase) %>% spread("key", "value") %>% 
-  filter(Year%in%YEARS) # filter on the selected year
-# the ligne above can be removed to process all the data
-
-# Import the mask and apply the threshold
-# create a boolean raster
-modelMask = raster(paste(OUTPUT, "_mask.tif", sep="")) > TH
-
-PixelID = raster(paste(OUTPUT, "_pixelid.tif", sep=""))
+PixelID = raster(paste(OUTPUT, ".tif", sep=""))
 names(PixelID) = "Pixel_ID"
+CellFrame = tibble(Pixel_ID=1:ncell(PixelID))
 
-len = dim(infos)[1]
-pb <- txtProgressBar(min=0, max=len, style=3) 
-for(i in 1:len){
-  #select the good ligne and remove the useless columns
-  info = infos[i,c(!is.na(infos[i,]))]
+#### Extract NDVI
+YearList = unique(LPISyearCrop$Year)
+pb <- txtProgressBar(min=0, max=length(YearList), style=3) 
+for(current_Year in YearList){
+  infoNDVI = filter(modis, Year==current_Year&source=="NDVI")
   
-  Mraster = raster(info$dir)
-  names(Mraster) = info$source
-  #make the raster fit the mask
-  Mrepro = projectRaster(Mraster, modelMask)
-  Mstack = stack(PixelID, Mrepro)
-  #plot(AllStack)
-  masked = mask(Mstack, modelMask, maskvalue=FALSE)
-  #plot(masked)
-  # extract all the pixels except the NA values
-  RawData = as.data.frame(masked, na.rm = TRUE) %>% 
-    cbind(dplyr::select(info, -source, -dir)) %>% # infos are new columns
-    extract_date() #create the date column
-  # save the data in the database
-  dbWriteTable(conn, info$source, RawData, append=TRUE)
+  print(paste("NDVI", "Year:", current_Year))
+  if(nrow(infoNDVI)){
+    
+    selectedID = PixelCrop %>%
+      filter(Year==current_Year&weight>TH) %>% pull(Pixel_ID)
+    maskValues = CellFrame %>%
+      mutate(value = if_else(Pixel_ID%in%selectedID, TRUE, FALSE))
+    maskRaster = setValues(PixelID, maskValues$value)
+    rawData = ExtractRaster(infoNDVI$dir, infoNDVI$IDfile,
+                            "NDVI", PixelID, maskRaster)
+    ndvi = inner_join(rawData, infoNDVI, by="IDfile") %>%
+      dplyr::select(Pixel_ID, Date, NDVI)
+    dbWriteTable(conn, "NDVI", ndvi, append=TRUE)
+  }
+  setTxtProgressBar(pb, getTxtProgressBar(pb)+1)
+}
+
+##### Extract phase informations ####
+
+pb <- txtProgressBar(min=0, max=nrow(LPISyearCrop), style=3) 
+for(i in 1:nrow(LPISyearCrop)){
+  current_Year = LPISyearCrop$Year[i]
+  current_Crop = LPISyearCrop$Crop[i]
+  infoPhase = filter(phase, Year==current_Year&
+                       Crop==current_Crop&
+                      source=="Pheno")
   
+  print(paste("Phase", "Year:", current_Year, "Crop:", current_Crop))
+  if(nrow(infoPhase)){
+    
+    selectedID = PixelCrop %>%
+      filter(Year==current_Year& Crop==current_Crop& weight>TH) %>%
+      pull(Pixel_ID)
+    maskValues = CellFrame %>%
+      mutate(value = if_else(Pixel_ID%in%selectedID, TRUE, FALSE))
+    maskRaster = setValues(PixelID, maskValues$value)
+    rawData = ExtractRaster(infoPhase$dir, infoPhase$IDfile,
+                            "DOY", PixelID, maskRaster)
+    Phase = inner_join(rawData, infoPhase, by="IDfile") %>%
+      extract_date() %>% 
+      dplyr::select(Pixel_ID, Date, Phase=P, Crop)
+    dbWriteTable(conn, "Phase", Phase, append=TRUE)
+  }
   setTxtProgressBar(pb, i)
 }
+
+
+dbExecute(conn, "drop view IF EXISTS Previous_Phase")
+dbExecute(conn, "
+          CREATE VIEW IF NOT EXISTS Previous_Phase
+          AS
+          Select n.Pixel_ID, n.Date as NDVI_Date, max(p.Date) as Pre_P_Date, Crop
+            from NDVI n inner join Phase p
+            on n.Pixel_ID=p.Pixel_ID
+            where n.Date >= p.Date
+            group by n.Pixel_ID, n.Date, Crop
+           ")
+dbExecute(conn, "drop view IF EXISTS next_Phase")
+dbExecute(conn, "
+          CREATE VIEW IF NOT EXISTS next_Phase
+          AS
+          Select n.Pixel_ID, n.Date as NDVI_Date, min(p.Date) as Next_P_Date, Crop
+          from NDVI n inner join Phase p
+          on n.Pixel_ID=p.Pixel_ID
+          where n.Date < p.Date
+          group by n.Pixel_ID, n.Date, Crop
+          ")
+dbExecute(conn, "drop view IF EXISTS NDVI_Phase_Range")
+dbExecute(conn, "
+          CREATE VIEW IF NOT EXISTS NDVI_Phase_Range
+          AS
+Select n.Pixel_ID, n.NDVI_Date, NDVI,
+Pre_P_Date, b.Phase as Pre_P, Next_P_Date, a.Phase as Next_P, n.Crop
+from Previous_Phase p inner join next_Phase n
+on n.Pixel_ID=p.Pixel_ID and n.NDVI_Date=p.NDVI_Date and n.Crop=p.Crop
+inner join ndvi
+on ndvi.Pixel_ID=n.Pixel_ID and n.NDVI_Date=ndvi.Date
+inner join Phase a
+on n.Pixel_ID=a.Pixel_ID and Next_P_Date=a.Date and n.Crop=a.Crop
+inner join Phase b
+on p.Pixel_ID=b.Pixel_ID and Pre_P_Date=b.Date and p.Crop=b.Crop
+")
+dbExecute(conn, "drop view IF EXISTS Filtered_NDVI_Phase_Range")
+dbExecute(conn, "
+          CREATE VIEW IF NOT EXISTS Filtered_NDVI_Phase_Range
+          AS
+Select *, julianday(NDVI_Date)-julianday(Pre_P_Date) as NDays,
+(julianday(NDVI_Date)-julianday(Pre_P_Date))/
+(julianday(Next_P_Date)-julianday(Pre_P_Date))
+as Relative_NDays,
+julianday(Next_P_Date)-julianday(Pre_P_Date) as Phase_Period
+from NDVI_Phase_Range
+where julianday(Next_P_Date)-julianday(Pre_P_Date) < 150
+           ")
+
 dbDisconnect(conn)
+

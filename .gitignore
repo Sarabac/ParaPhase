@@ -1,3 +1,5 @@
 *.tif
 *.sqlite
 .Rhistory
+*.rds
+*.pdf
