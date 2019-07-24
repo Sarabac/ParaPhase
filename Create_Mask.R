@@ -4,66 +4,70 @@ setwd(W.DIR)
 source("Variables.R")
 library(tidyverse)
 library(raster)
-library(sp)
+library(sf)
 library(rgdal)
 library(DBI)
-##### VARIABLES ######
 
+####
+CropCode = read.csv("CropCode.csv", sep=";")
 
 ###### IMPORT DATA ########
-MRaster = raster(MODIS.MODEL)
-field = readOGR(FIELD) %>% 
-  spTransform(crs(MRaster))
+shapefiles = tibble(direc = list.files(LPIS.DIR, ".*\\.shp",
+                        full.names = TRUE)) %>% 
+  filter(str_detect(direc, "Uckermark")) %>% #small region for testing
+  pull(direc) %>%
+  sapply(st_read) %>% sapply(function(x){mutate(x, Year_ID = row_number())})
 
+
+shape = NULL
+for (i in 1:length(shapefiles)){
+  sha = shapefiles[[i]]
+  if("K_ART"%in%colnames(sha)){sha = rename(sha, NU_CODE=K_ART)}
+  sh = sha %>% transmute(Year_ID, LPIS_code=as.factor(NU_CODE), Year=ANTRAGSJAH)
+  if(is.null(shape)){
+    shape = sh
+  }else{
+    shape = rbind(sh, shape)
+  }
+}
+field = shape %>% mutate(Field_ID = row_number())
+
+conn = connect(OUT.SQLITE)
+dbWriteTable(conn, "Field", st_drop_geometry(field),
+             overwrite=TRUE)
+dbWriteTable(conn, "CropCode", CropCode, overwrite=TRUE)
+dbDisconnect(conn)
+
+#### IMPORT RASTER ####
+MRaster = raster(MODIS.MODEL)
+field = st_transform(field, crs(MRaster))
 
 ModelRaster = crop(MRaster, field)
 #plot(Mcropped)
-
-CellData = tibble(layer = 1:ncell(ModelRaster), W = 0)
+###### Create the raster containing the IDs 
 EmptyRaster = raster(extent(ModelRaster), nrow(ModelRaster),
                     ncol(ModelRaster), crs(ModelRaster))
-cellraster = setValues(EmptyRaster, CellData$layer)
+cellraster = setValues(EmptyRaster, 1:ncell(ModelRaster))
+writeRaster(cellraster, paste(OUTPUT, ".tif", sep=""))# pixel ID raster
 
 pixels = extract(cellraster, field, df=TRUE,weight=TRUE,
                  normalizeWeights=FALSE)
-saveRDS(pixels, paste(OUTPUT, ".rds", sep=""))
+#saveRDS(pixels, paste(OUTPUT, ".rds", sep=""))
 
-#pixels = readRDS("output/pixels_Brandenburg.rds")
-### Create the mask and Pixel_id raster
-weightValue = pixels %>% 
-  group_by(layer) %>% #some pixels are on 2 fields
-  filter(weight==max(weight)) %>% # take only the max value
-  filter(row_number()==1) %>% #some max are the same, assign to the first layer
-  ungroup() %>% 
-  right_join(CellData, by = "layer") %>% # the other pixel receive weight = 0
-  mutate(value = coalesce(weight, W)) %>% 
-  arrange(layer)# make sur this is the good cell order
-
-WeightRaster = setValues(EmptyRaster, weightValue$value)
-#plot(WeightRaster)
-#plot(FieldIDRaster)
-writeRaster(WeightRaster, paste(OUTPUT, "_mask.tif", sep="")) # mask raster
-writeRaster(cellraster, paste(OUTPUT, "_pixelid.tif", sep=""))# pixel ID raster
-
-### Save field data in the database ###
-FieldData = field@data %>% 
-  mutate(Field_ID = row_number())
-PixelData = weightValue %>% # do not use the 'pixel' dataframe
-  # because 'weightValue' have been filtrer
-  # the doubles have been renoved
-  dplyr::select(Field_ID=ID, Pixel_ID=layer, weight) %>% 
-  drop_na()
-
-conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, ".sqlite", sep=""))
-dbWriteTable(conn, "Field", FieldData, overwrite=TRUE)
-dbWriteTable(conn, "Pixel", PixelData, overwrite=TRUE)
-
-# the view that link pixels and the LPIS shapefile
+conn = connect(OUT.SQLITE)
+dbWriteTable(conn, "Pixel", 
+             rename(pixels, Field_ID=ID, Pixel_ID=layer),
+             overwrite=TRUE)
+# the view to create the masks
 dbExecute(conn, "
-           CREATE VIEW IF NOT EXISTS PixelField
-           AS
-           Select distinct f.*, p.Pixel_ID, p.weight
-           from Field f inner join Pixel p
-           on f.Field_ID=p.Field_ID
-           ")
+          CREATE VIEW IF NOT EXISTS PixelCrop
+          AS Select distinct
+          Pixel_ID, PhenoID as Crop, Year,
+          max(weight) AS  weight
+          from Field f inner join Pixel p
+          on f.Field_ID=p.Field_ID
+          inner join CropCode c
+          on c.LPIS_code = f.LPIS_code
+          GROUP BY Pixel_ID, PhenoID, Year;
+          ")
 dbDisconnect(conn)

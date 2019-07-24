@@ -7,46 +7,58 @@ library(DBI)
 
 conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, "sqlite", sep="."))
 
-NDVI = tbl(conn, "NDVI") %>% 
-  select(Pixel_ID, Date, NDVI) %>% 
+phaseRange = tbl(conn, "Filtered_NDVI_Phase_Range") %>% 
   collect()
-Phase = tbl(conn, "DOY") %>% 
-  select(Pixel_ID,Crop,Date,P) %>% 
-  arrange(Pixel_ID,Crop,Date) %>% 
-  filter(Crop=="201") %>% 
-  collect() %>% 
-  group_by(Pixel_ID,Crop) %>% 
-  mutate(Porder=row_number()) %>% 
-  ungroup()
-dbDisconnect(conn)
 
-g = full_join(NDVI, Phase, by=c("Pixel_ID", "Date"))%>%
-  group_by(Pixel_ID) %>% 
-  arrange(Pixel_ID, Date, P) %>% 
-  mutate(next_P = P) %>% 
-  fill(P, .direction ="down")%>%
-  fill(next_P, .direction ="up") %>% 
-  mutate(Period = paste(P, next_P, sep="_"))
-
-clean = res2 %>%
-  drop_na(P, next_P) %>% 
-  filter(P!=next_P) %>% 
-  mutate(Period = as.factor(Period))
-
-with_day = clean %>% 
-  group_by(Pixel_ID, P_order) %>% 
-  mutate(nday=lubridate::)
-
-DOY = Phase %>% 
-  arrange(Pixel_ID,Crop,Date,P) %>% 
-  group_by(Pixel_ID,Crop) %>% 
-  mutate(next_P = c(P[-1], 0), next_Date = c(Date[-1],0)) %>%
-  filter(row_number()!=n()) %>% 
+coherent =phaseRange %>%
+  mutate(NDVI=NDVI/10000) %>% 
+  group_by(Crop, Pre_P) %>%
   ungroup() %>% 
-  mutate(period = as.factor(paste(P,next_P, sep="_")))
+  mutate(transition = paste(Pre_P,Next_P, sep="-"))
 
-test = DOY %>% 
-  group_by(Pixel_ID, period) %>% 
-  expand(Date=if_else(
-    
-  ))
+graphs = lapply(unique(coherent$Crop), function(crop){
+  dat = filter(coherent, Crop==crop)
+  mdat = dat %>% group_by(Crop, transition) %>%
+    summarise(NDVI = mean(NDVI))
+  ggplot(dat)+
+    geom_density(mapping = aes(x=NDVI, color = transition))+
+    geom_vline(data=mdat, aes(xintercept = NDVI, color = transition, linetype="mean"),
+               size = .8)+
+    scale_linetype_manual(name="",values = c(mean ="longdash"))+
+    facet_wrap(~Crop)
+})
+ggsave("arranged.pdf",
+       gridExtra::grid.arrange(grobs=graphs,ncol = 1),
+       width = 500, height = 1000, units = "mm")
+
+
+pdf("density.pdf")
+for(crop in unique(coherent$Crop)){
+  filter(coherent, Crop==crop) %>% 
+    ggplot( aes(x=NDVI, color = transition))+
+    geom_density() %>% 
+    print()
+}
+dev.off()
+
+gridExtra::grid.arrange(grobs=graphs,ncol = 1)
+
+
+zr = ggplot(coherent, aes(x=NDVI, color = transition))+
+  facet_wrap(~Crop)+
+  geom_density()
+
+
+rmIncoherence = filter(phaseRange, Crop==253)
+grap = ggplot(rmIncoherence, aes(x=Relative_NDays, y=NDVI))+
+  geom_point(alpha=0.01)+
+  geom_smooth()+
+  facet_grid(Crop~Pre_P+Next_P)
+grap
+
+
+PR = phaseRange %>% filter(Crop==204&Pre_P==18&Next_P==21)
+grap = ggplot(PR, aes(x=Relative_NDays, y=NDVI))+
+  geom_hex(bins=100)+
+  geom_smooth()
+grap
