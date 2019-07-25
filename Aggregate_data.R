@@ -1,7 +1,4 @@
-#W.DIR <- dirname(rstudioapi::getActiveDocumentContext()$path)
-W.DIR = "L:/Lucas/phenology/ParaPhase"
-setwd(W.DIR)
-source("Variables.R")
+
 library(tidyverse)
 library(raster)
 library(sp)
