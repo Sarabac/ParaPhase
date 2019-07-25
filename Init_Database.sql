@@ -17,40 +17,48 @@ create table if not exists Crop(
   Winter BOOLEAN);
 
 create table if not exists Field(
-  Zone_ID INTEGER FOREIGN KEY REFERENCES Zone(Zone_ID),
+  Zone_ID INTEGER,
   Field_ID INTEGER PRIMARY KEY,
   Field_NR INTEGER,
   Year INTEGER NOT NULL, -- LPIS Year
-  LPIS_code INTEGER);
+  LPIS_code INTEGER,
+  FOREIGN KEY (Zone_ID) REFERENCES Zone(Zone_ID) ON DELETE CASCADE
+);
 
 create table if not exists Position(
-  Zone_ID INTEGER FOREIGN KEY REFERENCES Zone(Zone_ID),
+  Zone_ID INTEGER,
   Position_ID INTEGER PRIMARY KEY,
-  Coord INTEGER NOT NULL); -- the cell number in the Zone raster
+  Coord INTEGER NOT NULL,-- the cell number in the Zone raster
+  FOREIGN KEY (Zone_ID) REFERENCES Zone(Zone_ID) ON DELETE CASCADE);
 
 create table if not exists Pixel(
   Pixel_ID INTEGER PRIMARY KEY,
-  Position_ID INTEGER FOREIGN KEY REFERENCES Position(Position_ID),
-  Field_ID INTEGER FOREIGN KEY REFERENCES Field(Field_ID),
-  weight REAL NOT NULL);
+  Position_ID INTEGER,
+  Field_ID INTEGER,
+  weight REAL NOT NULL,
+  FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE,
+  FOREIGN KEY (Field_ID) REFERENCES Field(Field_ID) ON DELETE CASCADE);
 
 create table if not exists NDVI(
   NDVI_ID INTEGER PRIMARY KEY,
-  Position_ID INTEGER FOREIGN KEY REFERENCES Position(Position_ID),
+  Position_ID INTEGER,
   NDVI_Value REAL NOT NULL,
-  NDVI_Date Date);
+  NDVI_Date Date,
+  FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
 
 create table if not exists Phase(
   Phase_ID INTEGER PRIMARY KEY,
-  Position_ID INTEGER FOREIGN KEY REFERENCES Position(Position_ID),
+  Position_ID INTEGER,
+  Crop VARCHAR,
   Phase_Code INTEGER,
-  Phase_Date Date);
+  Phase_Date Date,
+  FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
 
 Drop view IF EXISTS MaxWeight;
 CREATE VIEW IF NOT EXISTS MaxWeight
 AS
 Select distinct
-  g.Position_ID, Coord, g.Zone_ID, PhenoID AS Crop, Year
+  g.Position_ID, Coord, g.Zone_ID, PhenoID AS Crop, Year, Winter,
   max(weight) AS  weight
   from Pixel p
   inner join Position g
@@ -66,7 +74,7 @@ CREATE VIEW IF NOT EXISTS Previous_Phase
 AS
 SELECT NDVI_ID, Phase_ID AS Pre_Phase_ID
 FROM (-- select the closest previous phase date in each position and each crop
-  Select NDVI_ID, n.Position_ID as Pre_Position
+  Select NDVI_ID, n.Position_ID as Pre_Position,
   max(Phase_Date) as Pre_P_Date, Crop as Pre_Crop
   from NDVI n inner join Phase p
   on n.Position_ID=p.Position_ID
@@ -74,8 +82,7 @@ FROM (-- select the closest previous phase date in each position and each crop
   group by n.Position_ID, NDVI_ID, Crop
 )
 INNER JOIN Phase
-ON Position_ID=Pre_Position AND Phase_Date=Pre_P_Date AND Crop=Pre_Crop
-GROUP BY NDVI_ID ORDER BY Phase_ID  LIMIT 1;
+ON Position_ID=Pre_Position AND Phase_Date=Pre_P_Date AND Crop=Pre_Crop;
 -- if 2 transitions the same day... unlikely
 
 Drop view IF EXISTS Next_Phase;
@@ -83,7 +90,7 @@ CREATE VIEW IF NOT EXISTS Next_Phase
 AS
 SELECT NDVI_ID, Phase_ID AS Next_Phase_ID
 FROM (-- select the closest next phase date in each position and each crop
-  Select NDVI_ID, n.Position_ID as Pre_Position
+  Select NDVI_ID, n.Position_ID as Pre_Position,
   min(Phase_Date) as Pre_P_Date, Crop as Pre_Crop
   from NDVI n inner join Phase p
   on n.Position_ID=p.Position_ID
@@ -91,19 +98,18 @@ FROM (-- select the closest next phase date in each position and each crop
   group by n.Position_ID, NDVI_ID, Crop
 )
 INNER JOIN Phase
-ON Position_ID=Pre_Position AND Phase_Date=Pre_P_Date AND Crop=Pre_Crop
-GROUP BY NDVI_ID ORDER BY Phase_ID LIMIT 1;
+ON Position_ID=Pre_Position AND Phase_Date=Pre_P_Date AND Crop=Pre_Crop;
 -- if 2 transitions the same day... unlikely
 
 Drop view IF EXISTS NDVI_Phase_Range;
 CREATE VIEW IF NOT EXISTS NDVI_Phase_Range
 AS
-Select z.Zone_ID, z.Name AS Zone_Name, posi.Coord,
+Select z.Zone_ID, z.Name AS Zone_Name, posi.Coord, a.Crop,
 NDVI_Value as NDVI, NDVI_Date,
 a.Phase_Code AS Pre_P, a.Phase_Date AS Pre_P_Date,
 b.Phase_Code AS Next_P, b.Phase_Date AS Next_P_Date
 FROM NDVI
-INNER JOIN Pre_Phase p
+INNER JOIN Previous_Phase p
 ON NDVI.NDVI_ID=p.NDVI_ID
 INNER JOIN Next_Phase n
 ON NDVI.NDVI_ID=n.NDVI_ID

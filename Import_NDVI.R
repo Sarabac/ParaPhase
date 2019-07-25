@@ -14,7 +14,7 @@ Import_NDVI = function(conn, Zone_ID, MODIS.DIR, Threshold){
   # day of the year: 'DOY', year : 'YEAR'
   #### it is possible to add any other culumn
   
-  PixelCrop = tbl(conn, "PixelCrop")
+  PixelCrop = tbl(conn, "MaxWeight")
   LPISyearCrop = PixelCrop %>%
     dplyr::select(Year, Crop,Winter) %>% distinct() %>% collect() %>% drop_na()
   
@@ -27,7 +27,10 @@ Import_NDVI = function(conn, Zone_ID, MODIS.DIR, Threshold){
   
   PixelID = Load_RasterID(conn, Zone_ID)
   names(PixelID) = "Pixel_ID"
-  CellFrame = tibble(Pixel_ID=1:ncell(PixelID))
+  CellFrame = tibble(Coord=1:ncell(PixelID)) %>% 
+    left_join(dbGetQuery(conn,
+          "Select Position_ID, Coord from Position where Zone_ID=?",
+          param=Zone_ID), by = "Coord")
   
   #### Extract NDVI
   # extract also the previous Year for winter Crops
@@ -40,16 +43,18 @@ Import_NDVI = function(conn, Zone_ID, MODIS.DIR, Threshold){
     if(nrow(infoNDVI)){
       
       selectedID = PixelCrop %>%
-        filter(Year==current_Year&weight>Threshold) %>% pull(Pixel_ID)
+        filter(Year==current_Year&weight>Threshold) %>% pull(Position_ID)
       maskValues = CellFrame %>%
-        mutate(value = if_else(Pixel_ID%in%selectedID, TRUE, FALSE))
+        mutate(value = if_else(Position_ID%in%selectedID, TRUE, FALSE))
       maskRaster = setValues(PixelID, maskValues$value)
       rawData = ExtractRaster(infoNDVI$dir, infoNDVI$IDfile,
                               "NDVI", PixelID, maskRaster)
-      ndvi = inner_join(rawData, infoNDVI, by="IDfile") %>%
-        dplyr::select(Pixel_ID, Date, NDVI) %>%
-        mutate(Zone_ID = Zone_ID) %>% 
-        mutate(NDVI=NDVI/10000) #retrive the good NDVI from MODIS
+      ndvi = rawData %>% 
+        inner_join(CellFrame, by=c("Pixel_ID"="Coord")) %>% 
+        mutate(NDVI=NDVI/10000) %>%  #retrive the good NDVI from MODIS
+        inner_join(infoNDVI, by="IDfile") %>%
+        dplyr::select(Position_ID, NDVI_Value = NDVI, NDVI_Date=Date)
+        
       dbWriteTable(conn, "NDVI", ndvi, append=TRUE)
     }
     setTxtProgressBar(pb, getTxtProgressBar(pb)+1)

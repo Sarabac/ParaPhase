@@ -1,14 +1,14 @@
 W.DIR = "L:/Lucas/phenology/ParaPhase"
 setwd(W.DIR)
-source("Variables.R")
 library(tidyverse)
 library(DBI)
 
 
-conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, "sqlite", sep="."))
+conn = dbConnect(RSQLite::SQLite(), "ParaPhase.sqlite")
 
 phaseRange = tbl(conn, "Filtered_NDVI_Phase_Range") %>% 
   collect()
+
 
 coherent =phaseRange %>%
   mutate(transition = paste(Pre_P,Next_P, sep="-"))

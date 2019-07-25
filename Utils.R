@@ -13,7 +13,7 @@ Save_RasterID = function(conn, ModelRaster){
     ncol = ncol(ModelRaster),
     CRS = crs(ModelRaster, asText=T)
   )
-  dbAppendTable(conn, "Zone", Rtable)
+  dbWriteTable(conn, "Zone", Rtable, append=TRUE)
   return(Zone_ID)
 }
 
