@@ -133,7 +133,7 @@ for(i in 1:nrow(LPISyearCrop)){
       infoP= infoPhase %>% # remove phases after september
         filter(quantile(stack(dir, quick=TRUE), 0.5) <=240)#days
     }
-    if(!nrow(infoP)){next}
+    if(!nrow(infoP)){next}#if no data
     
     rawData = ExtractRaster(infoP$dir, infoP$IDfile,
                             "DOY", PixelID, maskRaster)
