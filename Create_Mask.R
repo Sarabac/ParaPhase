@@ -1,5 +1,5 @@
 #W.DIR <- dirname(rstudioapi::getActiveDocumentContext()$path)
-Create_Mask = function(conn, LPIS.DIR, MODIS.MODEL){
+Create_Mask = function(conn, LPIS.DIR, MODIS.MODEL, ZONE_NAME=""){
   source("Utils.R")
   library(tidyverse)
   library(raster)
@@ -26,7 +26,7 @@ Create_Mask = function(conn, LPIS.DIR, MODIS.MODEL){
       shape = rbind(sh, shape)
     }
   }
-  field = shape %>% mutate(Field_ID = row_number())
+  field = shape %>% mutate(Field_NR = row_number())
   
 
   
@@ -35,33 +35,19 @@ Create_Mask = function(conn, LPIS.DIR, MODIS.MODEL){
   field = st_transform(field, crs(MRaster))
   
   ModelRaster = crop(MRaster, field)
+  names(ModelRaster) = ZONE_NAME
   #plot(Mcropped)
   ###### Create the raster containing the IDs 
   Zone_ID=Save_RasterID(conn, ModelRaster)
-  dbWriteTable(conn, "Field", field %>%
+  dbAppendTable(conn, "Field", field %>%
                  st_drop_geometry() %>%
-                 mutate(Zone_ID=Zone_ID),
-               append=TRUE)
+                 mutate(Zone_ID=Zone_ID))
   RasterID=Load_RasterID(conn, Zone_ID)
   
   pixels = extract(RasterID, field, df=TRUE,weight=TRUE,
-                   normalizeWeights=FALSE)%>%
-    rename( Field_ID=ID, Pixel_ID=layer) %>%
-    mutate(Zone_ID = Zone_ID)
-  #saveRDS(pixels, paste(OUTPUT, ".rds", sep=""))
+                   normalizeWeights=FALSE)
+  saveRDS(pixels, paste("test_p", ".rds", sep=""))
   
   dbWriteTable(conn, "Pixel", pixels, append=TRUE)
-  # the view to create the masks
-  dbExecute(conn, "drop view IF EXISTS PixelCrop")
-  dbExecute(conn, "
-            CREATE VIEW IF NOT EXISTS PixelCrop
-            AS Select distinct
-            Pixel_ID, PhenoID as Crop, Year, Winter,
-            max(weight) AS  weight
-            from Field f inner join Pixel p
-            on f.Field_ID=p.Field_ID
-            inner join Crop c
-            on c.LPIS_code = f.LPIS_code
-            GROUP BY Pixel_ID, PhenoID, Year;
-            ")
+
 }

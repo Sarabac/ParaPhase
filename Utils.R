@@ -1,23 +1,12 @@
 
 Save_RasterID = function(conn, ModelRaster){
   Rext = extent(ModelRaster)
-  dbExecute(conn,
-            "
-            create table if not exists Zone(
-            Zone_ID INTEGER PRIMARY KEY ,
-            xmin REAL NOT NULL,
-            xmax REAL NOT NULL,
-            ymin REAL NOT NULL,
-            ymax REAL NOT NULL,
-            nrow INTEGER NOT NULL,
-            ncol INTEGER NOT NULL,
-            CRS VARCHAR NOT NULL )
-            ")
   Zone_ID = dbGetQuery(# Get the next Zone ID
     conn, "Select coalesce(max(Zone_ID) + 1,1) from Zone")[[1]]
   Rext = extent(ModelRaster)
   Rtable = tibble(
     Zone_ID = Zone_ID,
+    Name = names(ModelRaster),
     xmin = Rext@xmin, xmax = Rext@xmax,
     ymin = Rext@ymin, ymax = Rext@ymax,
     nrow = nrow(ModelRaster),
@@ -35,5 +24,34 @@ Load_RasterID = function(conn, Zone_ID){
   EmptyRaster = raster(Rext, Rtable$nrow,
                        Rtable$ncol, CRS(Rtable$CRS))
   RasterID = setValues(EmptyRaster, 1:(Rtable$nrow*Rtable$ncol))
+  names(RasterID)=Rtable$Name
   return(RasterID)
+}
+
+extract_n = function(dat, n){
+  # extract a number of length n from a character vector
+  as.integer(str_extract(dat, paste("(?:(?<!\\d)\\d{",n,"}(?!\\d))", sep="")))
+}
+
+extract_date = function(dat){
+  mutate(dat, DOY = round(as.numeric(DOY))) %>%
+    mutate(Date = as.Date(paste(Year,"01-01",sep="-")) + days(DOY - 1)) %>% 
+    mutate(Date = as.character(Date))
+}
+
+ExtractRaster = function(files, IDfile, value_name,
+                         PixelID, maskRaster){
+  
+  Mraster = stack(files, quick=TRUE)
+  
+  names(Mraster) = IDfile
+  #make the raster fit the mask
+  Mrepro = projectRaster(Mraster, maskRaster)
+  Mstack = stack(PixelID, Mrepro)
+  #plot(AllStack)
+  masked = mask(Mstack, maskRaster, maskvalue=FALSE)
+  #plot(masked)
+  # extract all the pixels except the NA values
+  return(as.data.frame(masked, na.rm = TRUE)%>%
+           gather("IDfile",!!value_name, -Pixel_ID))
 }

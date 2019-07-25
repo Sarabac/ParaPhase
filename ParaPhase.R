@@ -8,11 +8,15 @@ MODIS.MODEL = "L:/Lucas/phenology/_fParaPhase/_input/MODIS/MOD09Q1_NDVI_2010_001
 OUT.SQLITE = "ParaPhase.sqlite"
 TH = 0.75 # threshold for the mask
 
+
 conn = DBI::dbConnect(RSQLite::SQLite(), OUT.SQLITE)
+
+dbExecute(conn, read_file("Init_Database.sql"))
 #create the table containing crop informations
 dbWriteTable(conn, "Crop",
              read.csv("CropCode.csv", sep=";"),
              overwrite=TRUE)
-Zone_ID = Create_Mask()
+Zone_ID = Create_Mask(conn, LPIS.DIR, MODIS.MODEL, ZONE_NAME)
+Import_NDVI(conn, Zone_ID, MODIS.DIR)
 
 DBI::dbDisconnect(conn)

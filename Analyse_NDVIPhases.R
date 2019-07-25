@@ -11,9 +11,6 @@ phaseRange = tbl(conn, "Filtered_NDVI_Phase_Range") %>%
   collect()
 
 coherent =phaseRange %>%
-  mutate(NDVI=NDVI/10000) %>% 
-  group_by(Crop, Pre_P) %>%
-  ungroup() %>% 
   mutate(transition = paste(Pre_P,Next_P, sep="-"))
 
 graphs = lapply(unique(coherent$Crop), function(crop){
@@ -27,23 +24,27 @@ graphs = lapply(unique(coherent$Crop), function(crop){
     scale_linetype_manual(name="",values = c(mean ="longdash"))+
     facet_wrap(~Crop)
 })
-ggsave("arranged.pdf",
+ggsave("Density_NDVI_Transition.pdf",
        gridExtra::grid.arrange(grobs=graphs,ncol = 1),
        width = 500, height = 1000, units = "mm")
 
 
-pdf("density.pdf")
-for(crop in unique(coherent$Crop)){
-  filter(coherent, Crop==crop) %>% 
-    ggplot( aes(x=NDVI, color = transition))+
-    geom_density() %>% 
-    print()
-}
-dev.off()
-
-gridExtra::grid.arrange(grobs=graphs,ncol = 1)
+grap =  coherent %>% #round to create classes for the boxplots
+  mutate(Relative_NDays = round(Relative_NDays, 2)) %>% 
+  ggplot(aes(x=Relative_NDays, y=NDVI, group=Relative_NDays))+
+  geom_boxplot(outlier.shape=NA)+
+  geom_smooth( aes(group=1), alpha=0.3)+
+  facet_wrap(~Crop+transition, ncol=1)
+ggsave("Boxplot_NDVI_Transition.pdf", grap, limitsize = FALSE,
+       width = 500, height = 5000, units = "mm")
 
 
+
+
+
+
+
+################# TEST ################
 zr = ggplot(coherent, aes(x=NDVI, color = transition))+
   facet_wrap(~Crop)+
   geom_density()
@@ -62,3 +63,14 @@ grap = ggplot(PR, aes(x=Relative_NDays, y=NDVI))+
   geom_hex(bins=100)+
   geom_smooth()
 grap
+
+PR2 = phaseRange %>% filter(Crop==204&Pre_P==18&Next_P==21) %>% 
+  mutate(Relative_NDays = round(Relative_NDays, 2))
+grap = ggplot(PR2, aes(x=Relative_NDays,
+                      y=NDVI, group=Relative_NDays))+
+  geom_boxplot(outlier.shape=NA)+
+  geom_smooth( aes(group=1), alpha=0.3)
+grap
+
+
+

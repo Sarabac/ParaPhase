@@ -6,38 +6,6 @@ library(rgdal)
 library(lubridate)
 library(DBI)
 
-######## FUNCTIONS ########
-extract_n = function(dat, n){
-  # extract a number of length n from a character vector
-  as.integer(str_extract(dat, paste("(?:(?<!\\d)\\d{",n,"}(?!\\d))", sep="")))
-}
-
-extract_date = function(dat){
-  mutate(dat, DOY = round(as.numeric(DOY))) %>%
-    mutate(Date = as.Date(paste(Year,"01-01",sep="-")) + days(DOY - 1)) %>% 
-    mutate(Date = as.character(Date))
-}
-
-ExtractRaster = function(files, IDfile, value_name,
-                         PixelID, maskRaster){
-  
-  Mraster = stack(files, quick=TRUE)
-  
-  names(Mraster) = IDfile
-  #make the raster fit the mask
-  Mrepro = projectRaster(Mraster, maskRaster)
-  Mstack = stack(PixelID, Mrepro)
-  #plot(AllStack)
-  masked = mask(Mstack, maskRaster, maskvalue=FALSE)
-  #plot(masked)
-  # extract all the pixels except the NA values
-  return(as.data.frame(masked, na.rm = TRUE)%>%
-           gather("IDfile",!!value_name, -Pixel_ID))
-}
-###### Connect to Database
-
-conn = dbConnect(RSQLite::SQLite(), paste(OUT.SQLITE, "sqlite", sep="."))
-
 
 ###### IMPORT DATA ########
 #### Rule for the mandatory column name for the raster 'infos'
@@ -142,55 +110,4 @@ for(i in 1:nrow(LPISyearCrop)){
   setTxtProgressBar(pb, i)
   }
 }
-
-
-dbExecute(conn, "drop view IF EXISTS Previous_Phase")
-dbExecute(conn, "
-          CREATE VIEW IF NOT EXISTS Previous_Phase
-          AS
-          Select n.Pixel_ID, n.Date as NDVI_Date, max(p.Date) as Pre_P_Date, Crop
-            from NDVI n inner join Phase p
-            on n.Pixel_ID=p.Pixel_ID
-            where n.Date >= p.Date
-            group by n.Pixel_ID, n.Date, Crop
-           ")
-dbExecute(conn, "drop view IF EXISTS next_Phase")
-dbExecute(conn, "
-          CREATE VIEW IF NOT EXISTS next_Phase
-          AS
-          Select n.Pixel_ID, n.Date as NDVI_Date, min(p.Date) as Next_P_Date, Crop
-          from NDVI n inner join Phase p
-          on n.Pixel_ID=p.Pixel_ID
-          where n.Date < p.Date
-          group by n.Pixel_ID, n.Date, Crop
-          ")
-dbExecute(conn, "drop view IF EXISTS NDVI_Phase_Range")
-dbExecute(conn, "
-          CREATE VIEW IF NOT EXISTS NDVI_Phase_Range
-          AS
-Select n.Pixel_ID, n.NDVI_Date, NDVI,
-Pre_P_Date, b.Phase as Pre_P, Next_P_Date, a.Phase as Next_P, n.Crop
-from Previous_Phase p inner join next_Phase n
-on n.Pixel_ID=p.Pixel_ID and n.NDVI_Date=p.NDVI_Date and n.Crop=p.Crop
-inner join ndvi
-on ndvi.Pixel_ID=n.Pixel_ID and n.NDVI_Date=ndvi.Date
-inner join Phase a
-on n.Pixel_ID=a.Pixel_ID and Next_P_Date=a.Date and n.Crop=a.Crop
-inner join Phase b
-on p.Pixel_ID=b.Pixel_ID and Pre_P_Date=b.Date and p.Crop=b.Crop
-")
-dbExecute(conn, "drop view IF EXISTS Filtered_NDVI_Phase_Range")
-dbExecute(conn, "
-          CREATE VIEW IF NOT EXISTS Filtered_NDVI_Phase_Range
-          AS
-Select *, julianday(NDVI_Date)-julianday(Pre_P_Date) as NDays,
-(julianday(NDVI_Date)-julianday(Pre_P_Date))/
-(julianday(Next_P_Date)-julianday(Pre_P_Date))
-as Relative_NDays,
-julianday(Next_P_Date)-julianday(Pre_P_Date) as Phase_Period
-from NDVI_Phase_Range
-where julianday(Next_P_Date)-julianday(Pre_P_Date) < 150
-           ")
-
-dbDisconnect(conn)
 
