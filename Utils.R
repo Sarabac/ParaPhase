@@ -4,6 +4,7 @@ library(raster)
 library(DBI)
 
 Save_RasterID = function(conn, ModelRaster){
+  # put the raster definition in the Zone table of the databes
   Rext = extent(ModelRaster)
   Zone_ID = dbGetQuery(# Get the next Zone ID
     conn, "Select coalesce(max(Zone_ID) + 1,1) from Zone")[[1]]
@@ -22,6 +23,8 @@ Save_RasterID = function(conn, ModelRaster){
 }
 
 Load_RasterID = function(conn, Zone_ID){
+  # Create a raster from the raster designed by Zone_ID in the Zone Table
+  # values of the cells are the cell index
   Rtable = dbGetQuery(
     conn,"Select * from Zone where Zone_ID=?", param=Zone_ID)
   Rext = extent(Rtable$xmin, Rtable$xmax, Rtable$ymin, Rtable$ymax)

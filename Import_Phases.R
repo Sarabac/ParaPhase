@@ -42,9 +42,9 @@ Import_Phases = function(conn, Zone_ID, PHASE.DIR, Threshold){
     }else{
       selectedYear=c(current_Year)
     }
-    selectedID = PixelCrop %>%
+    selectedID = PixelCrop %>% # select the position with a good weight
       filter(current_Year& Crop==current_Crop& weight>Threshold) %>% pull(Position_ID)
-    maskValues = CellFrame %>%
+    maskValues = CellFrame %>%# test for each position if it have been selected
       mutate(value = if_else(Position_ID%in%selectedID, TRUE, FALSE))
     maskRaster = setValues(PixelID, maskValues$value)
     
