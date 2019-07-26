@@ -67,68 +67,61 @@ Select distinct
   on f.Field_ID=p.Field_ID
   inner join Crop c
   on c.LPIS_code = f.LPIS_code
-  GROUP BY g.Position_ID, Coord, g.Zone_ID, Crop, Year;
+  GROUP BY g.Position_ID, Coord, g.Zone_ID, PhenoID, Year;
 
 Drop view IF EXISTS Previous_Phase;
 CREATE VIEW IF NOT EXISTS Previous_Phase
 AS
-SELECT NDVI_ID, Phase_ID AS Pre_Phase_ID
-FROM (-- select the closest previous phase date in each position and each crop
-  Select NDVI_ID, n.Position_ID as Pre_Position,
-  max(Phase_Date) as Pre_P_Date, Crop as Pre_Crop
-  from NDVI n inner join Phase p
-  on n.Position_ID=p.Position_ID
-  where NDVI_Date >= Phase_Date
-  group by n.Position_ID, NDVI_ID, Crop
-)
-INNER JOIN Phase
-ON Position_ID=Pre_Position AND Phase_Date=Pre_P_Date AND Crop=Pre_Crop;
--- if 2 transitions the same day... unlikely
+Select NDVI_ID, Phase_ID, Phase_Code AS Pre_P,
+max(Phase_Date) as Pre_P_Date, Crop
+from NDVI n inner join Phase p
+on n.Position_ID=p.Position_ID
+where NDVI_Date >= Phase_Date
+group by NDVI_ID, Crop;
+
 
 Drop view IF EXISTS Next_Phase;
 CREATE VIEW IF NOT EXISTS Next_Phase
 AS
-SELECT NDVI_ID, Phase_ID AS Next_Phase_ID
-FROM (-- select the closest next phase date in each position and each crop
-  Select NDVI_ID, n.Position_ID as Pre_Position,
-  min(Phase_Date) as Pre_P_Date, Crop as Pre_Crop
-  from NDVI n inner join Phase p
-  on n.Position_ID=p.Position_ID
-  where NDVI_Date < Phase_Date
-  group by n.Position_ID, NDVI_ID, Crop
-)
-INNER JOIN Phase
-ON Position_ID=Pre_Position AND Phase_Date=Pre_P_Date AND Crop=Pre_Crop;
--- if 2 transitions the same day... unlikely
+Select NDVI_ID, Phase_ID, Phase_Code AS Next_P,
+min(Phase_Date) as Next_P_Date, Crop
+from NDVI n inner join Phase p
+on n.Position_ID=p.Position_ID
+where NDVI_Date < Phase_Date
+group by NDVI_ID, Crop;
 
 Drop view IF EXISTS NDVI_Phase_Range;
 CREATE VIEW IF NOT EXISTS NDVI_Phase_Range
 AS
-Select z.Zone_ID, z.Name AS Zone_Name, posi.Coord, a.Crop,
+Select distinct
+z.Zone_ID, z.Name AS Zone_Name, posi.Coord, p.Crop,
 NDVI_Value as NDVI, NDVI_Date,
-a.Phase_Code AS Pre_P, a.Phase_Date AS Pre_P_Date,
-b.Phase_Code AS Next_P, b.Phase_Date AS Next_P_Date
+Pre_P, Pre_P_Date,
+Next_P, Next_P_Date
 FROM NDVI
 INNER JOIN Previous_Phase p
 ON NDVI.NDVI_ID=p.NDVI_ID
 INNER JOIN Next_Phase n
-ON NDVI.NDVI_ID=n.NDVI_ID
-INNER JOIN Phase a -- previous phase
-ON a.Phase_ID=Pre_Phase_ID
-INNER JOIN Phase b -- next phase
-ON b.Phase_ID=Next_Phase_ID
+ON NDVI.NDVI_ID=n.NDVI_ID and p.Crop=n.Crop
 INNER JOIN Position posi
 ON NDVI.Position_ID=posi.Position_ID
 INNER JOIN Zone z
 ON posi.Zone_ID=z.Zone_ID;
+/*
+/!\ if a year is missing, it will consider the closest date of the closest year
+to avoid that, the View Filtered_NDVI_Phase_Range ensure that the
+time periode between two phases is less than half a year
+*/
 
 Drop view IF EXISTS Filtered_NDVI_Phase_Range;
 CREATE VIEW IF NOT EXISTS Filtered_NDVI_Phase_Range
 AS
-Select *, julianday(NDVI_Date)-julianday(Pre_P_Date) as NDays,
+Select *, Pre_P||"-"||Next_P AS Transition,
+julianday(NDVI_Date)-julianday(Pre_P_Date) as NDays,
 (julianday(NDVI_Date)-julianday(Pre_P_Date))/
 (julianday(Next_P_Date)-julianday(Pre_P_Date))
 as Relative_NDays,
 julianday(Next_P_Date)-julianday(Pre_P_Date) as Phase_Period
 from NDVI_Phase_Range
 where julianday(Next_P_Date)-julianday(Pre_P_Date) < 150;
+-- the time periode between two phases is less than half a year
