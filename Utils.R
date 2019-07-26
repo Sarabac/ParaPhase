@@ -1,4 +1,8 @@
 
+library(tidyverse)
+library(raster)
+library(DBI)
+
 Save_RasterID = function(conn, ModelRaster){
   Rext = extent(ModelRaster)
   Zone_ID = dbGetQuery(# Get the next Zone ID
@@ -35,7 +39,7 @@ extract_n = function(dat, n){
 
 extract_date = function(dat){
   mutate(dat, DOY = round(as.numeric(DOY))) %>%
-    mutate(Date = as.Date(paste(Year,"01-01",sep="-")) + days(DOY - 1)) %>% 
+    mutate(Date = as.Date(paste(Year,"01-01",sep="-")) + (DOY - 1)) %>% 
     mutate(Date = as.character(Date))
 }
 

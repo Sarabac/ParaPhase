@@ -1,52 +1,61 @@
 create table if not exists Zone(
+  -- define an empty raster that cover the studyed Zone
   Zone_ID INTEGER PRIMARY KEY,
   Name VARCHAR,
+  -- the extent of the raster --
   xmin REAL NOT NULL,
   xmax REAL NOT NULL,
   ymin REAL NOT NULL,
   ymax REAL NOT NULL,
+  -- -- --
   nrow INTEGER NOT NULL,
   ncol INTEGER NOT NULL,
-  CRS VARCHAR NOT NULL );
+  CRS VARCHAR NOT NULL); -- raster projection
 
 create table if not exists Crop(
+  -- link the LPIS code and the ID from the Phenological rasters
+  -- the data is loaded from CropCode.csv
   LPIS_code INTEGER,
   PhenoID INTEGER,
   German VARCHAR,
   English VARCHAR,
-  Winter BOOLEAN);
+  Winter BOOLEAN); -- is it a winter crop ?
 
 create table if not exists Field(
+  -- data contaned in the field shapefiles
   Zone_ID INTEGER,
   Field_ID INTEGER PRIMARY KEY,
-  Field_NR INTEGER,
+  Field_NR INTEGER, -- ID given by the raster::extract function
   Year INTEGER NOT NULL, -- LPIS Year
   LPIS_code INTEGER,
   FOREIGN KEY (Zone_ID) REFERENCES Zone(Zone_ID) ON DELETE CASCADE
 );
 
 create table if not exists Position(
+  -- link the cell number and the corresponding Zone
   Zone_ID INTEGER,
   Position_ID INTEGER PRIMARY KEY,
   Coord INTEGER NOT NULL,-- the cell number in the Zone raster
   FOREIGN KEY (Zone_ID) REFERENCES Zone(Zone_ID) ON DELETE CASCADE);
 
-create table if not exists Pixel(
-  Pixel_ID INTEGER PRIMARY KEY,
+create table if not exists Weighting(
+  -- link the cell position and the Field
   Position_ID INTEGER,
   Field_ID INTEGER,
-  weight REAL NOT NULL,
+  weight FLOAT,  -- indicate the proportion of the cell covered by the Field
   FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE,
   FOREIGN KEY (Field_ID) REFERENCES Field(Field_ID) ON DELETE CASCADE);
 
 create table if not exists NDVI(
+  -- NDVI value in a given cell in a given Date
   NDVI_ID INTEGER PRIMARY KEY,
   Position_ID INTEGER,
-  NDVI_Value REAL NOT NULL,
+  NDVI_Value FLOAT NOT NULL,
   NDVI_Date Date,
   FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
 
 create table if not exists Phase(
+  -- Phase transition in a given cell in a given date for a given crop
   Phase_ID INTEGER PRIMARY KEY,
   Position_ID INTEGER,
   Crop VARCHAR,
@@ -56,18 +65,19 @@ create table if not exists Phase(
 
 Drop view IF EXISTS MaxWeight;
 CREATE VIEW IF NOT EXISTS MaxWeight
+-- Weight for a given crop in a given Year in a given position
 AS
 Select distinct
   g.Position_ID, Coord, g.Zone_ID, PhenoID AS Crop, Year, Winter,
   max(weight) AS  weight
-  from Pixel p
+  from Weighting p
   inner join Position g
   on g.Position_ID=p.Position_ID
   inner join Field f
   on f.Field_ID=p.Field_ID
   inner join Crop c
   on c.LPIS_code = f.LPIS_code
-  GROUP BY g.Position_ID, Coord, g.Zone_ID, PhenoID, Year;
+  GROUP BY g.Position_ID, Coord, PhenoID, Year;
 
 Drop view IF EXISTS Previous_Phase;
 CREATE VIEW IF NOT EXISTS Previous_Phase
@@ -110,18 +120,19 @@ ON posi.Zone_ID=z.Zone_ID;
 /*
 /!\ if a year is missing, it will consider the closest date of the closest year
 to avoid that, the View Filtered_NDVI_Phase_Range ensure that the
-time periode between two phases is less than half a year
+time periode between two phases is less than a year
 */
-
 Drop view IF EXISTS Filtered_NDVI_Phase_Range;
 CREATE VIEW IF NOT EXISTS Filtered_NDVI_Phase_Range
 AS
-Select *, Pre_P||"-"||Next_P AS Transition,
+Select NDVI_Phase_Range.*, English as CropName,
+Pre_P||"-"||Next_P as Transition,
 julianday(NDVI_Date)-julianday(Pre_P_Date) as NDays,
 (julianday(NDVI_Date)-julianday(Pre_P_Date))/
 (julianday(Next_P_Date)-julianday(Pre_P_Date))
 as Relative_NDays,
 julianday(Next_P_Date)-julianday(Pre_P_Date) as Phase_Period
 from NDVI_Phase_Range
-where julianday(Next_P_Date)-julianday(Pre_P_Date) < 150;
+inner join Crop on Crop=PhenoID
+where julianday(Next_P_Date)-julianday(Pre_P_Date) < 300;
 -- the time periode between two phases is less than half a year

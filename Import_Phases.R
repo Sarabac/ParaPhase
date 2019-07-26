@@ -1,33 +1,32 @@
 Import_Phases = function(conn, Zone_ID, PHASE.DIR, Threshold){
+  # conn: DBI connection to a database
+  # Zone_ID: ID of the the Zone in the database
+  # PHASE.DIR: path to a directory containing Phase DOY Rasters
+  # Threshold: [0,1] minimun overlapping proportion of a field
+  #             on a cell
   source("Utils.R")
   library(tidyverse)
   library(raster)
-  library(sp)
-  library(rgdal)
-  library(lubridate)
   library(DBI)
-  
-  
-  ###### IMPORT DATA ########
-  #### Rule for the mandatory column name for the raster 'infos'
-  # path to the raster: 'dir', name of the data : 'source'
-  # day of the year: 'DOY', year : 'YEAR'
-  #### it is possible to add any other culumn
   
   PixelCrop = tbl(conn, "MaxWeight")
   LPISyearCrop = PixelCrop %>%
     dplyr::select(Year, Crop,Winter) %>% distinct() %>% collect() %>% drop_na()
+  
   phase = tibble(dir = list.files(PHASE.DIR, "\\.tif$", full.names = T))%>% 
     mutate(name = basename(dir)) %>%
     mutate(Crop = extract_n(name, 3), Year = extract_n(name, 4),
            # Phenology have a lenght 1 or 2
-           P = coalesce(extract_n(name, 2),extract_n(name, 1))) %>% 
+           P = coalesce(extract_n(name, 2),extract_n(name, 1))) %>%
+    #IDfile: to find each layer in the raster stack and the extracted dataframe
     mutate(IDfile = paste("X", row_number(), sep=""))
   
+  # create the raster containing the cells index
   PixelID = Load_RasterID(conn, Zone_ID)
   names(PixelID) = "Pixel_ID"
-  CellFrame = tibble(Coord=1:ncell(PixelID))%>% 
-    left_join(dbGetQuery(conn,
+  # create the dataframe containing the cells index
+  CellFrame = tibble(Coord=1:ncell(PixelID)) %>% 
+    left_join(dbGetQuery(conn, # get the position ID
                          "Select Position_ID, Coord from Position where Zone_ID=?",
                          param=Zone_ID), by = "Coord")
   
