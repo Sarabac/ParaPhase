@@ -20,7 +20,8 @@ Import_Phases = function(conn, Zone_ID, PHASE.DIR, Threshold){
 
   ##### Extract phase informations ####
   LPISyearCrop = dbGetQuery(conn,
-       "select distinct Year, Crop, Winter from MaxWeight")
+       "select distinct Year, Crop, Winter
+       from MaxWeight where Zone_ID=?", param=Zone_ID)
   pb <- txtProgressBar(min=0, max=nrow(LPISyearCrop), style=3) 
   for(i in 1:nrow(LPISyearCrop)){
     current_Year = LPISyearCrop$Year[i]

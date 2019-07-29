@@ -19,7 +19,8 @@ Import_NDVI = function(conn, Zone_ID, MODIS.FILES, Threshold){
   #### Extract NDVI
   # use also the previous Year for winter Crops
   LPISyearCrop = dbGetQuery(conn,
-      "select distinct Year as Y1, Year-1 as Y0 from MaxWeight")
+      "select distinct Year as Y1, Year-1 as Y0
+      from MaxWeight where Zone_ID=?", param=Zone_ID)
   YearList = union(LPISyearCrop$Y1, LPISyearCrop$Y0)
   pb <- txtProgressBar(min=0, max=length(YearList), style=3) 
   for(current_Year in YearList){
