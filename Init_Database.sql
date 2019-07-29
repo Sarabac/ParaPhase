@@ -36,6 +36,7 @@ create table if not exists Position(
   Zone_ID INTEGER,
   Position_ID INTEGER PRIMARY KEY,
   Coord INTEGER NOT NULL,-- the cell number in the Zone raster
+  UNIQUE(Zone_ID, Coord),
   FOREIGN KEY (Zone_ID) REFERENCES Zone(Zone_ID) ON DELETE CASCADE);
 
 create table if not exists Weighting(
