@@ -62,3 +62,11 @@ ExtractRaster = function(files, IDfile, value_name,
   return(as.data.frame(masked, na.rm = TRUE)%>%
            gather("IDfile",!!value_name, -Pixel_ID))
 }
+
+create_Mask = function(conn, Zone_ID, Threshold, Year, crop=NULL){
+  selectedID = PixelCrop %>% # select the position with a good weight
+    filter(current_Year& Crop==current_Crop& weight>Threshold) %>% pull(Position_ID)
+  maskValues = CellFrame %>%# test for each position if it have been selected
+    mutate(value = if_else(Position_ID%in%selectedID, TRUE, FALSE))
+  maskRaster = setValues(PixelID, maskValues$value)
+}

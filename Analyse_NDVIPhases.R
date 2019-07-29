@@ -3,11 +3,11 @@ setwd(W.DIR)
 library(tidyverse)
 library(DBI)
 
-
+Zone_ID = 2
 conn = dbConnect(RSQLite::SQLite(), "ParaPhase.sqlite")
 
 phaseRange = tbl(conn, "Filtered_NDVI_Phase_Range") %>% 
-  collect()
+  filter(Zone_ID=!!Zone_ID) %>% collect()
 
 graphs = lapply(unique(phaseRange$CropName), function(crop){
   dat = filter(phaseRange, CropName==crop)

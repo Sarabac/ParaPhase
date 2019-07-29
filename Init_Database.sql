@@ -68,7 +68,7 @@ CREATE VIEW IF NOT EXISTS MaxWeight
 -- Weight for a given crop in a given Year in a given position
 AS
 Select distinct
-  g.Position_ID, Coord, g.Zone_ID, PhenoID AS Crop, Year, Winter,
+  g.Zone_ID, g.Position_ID, Coord, PhenoID AS Crop, Year, Winter,
   max(weight) AS  weight
   from Weighting p
   inner join Position g
@@ -77,7 +77,7 @@ Select distinct
   on f.Field_ID=p.Field_ID
   inner join Crop c
   on c.LPIS_code = f.LPIS_code
-  GROUP BY g.Position_ID, Coord, PhenoID, Year;
+  GROUP BY g.Position_ID, PhenoID, Year;
 
 Drop view IF EXISTS Previous_Phase;
 CREATE VIEW IF NOT EXISTS Previous_Phase

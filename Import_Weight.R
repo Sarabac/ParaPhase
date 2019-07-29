@@ -1,5 +1,5 @@
 #W.DIR <- dirname(rstudioapi::getActiveDocumentContext()$path)
-Create_Mask = function(conn, LPIS.DIR, MODIS.MODEL, ZONE_NAME=""){
+Import_Weight = function(conn, LPIS.FILES, MODIS.MODEL, ZONE_NAME=""){
   # conn: DBI connection to a database
   # LPIS.DIR: path to a directory containing LPIS shapefiles
   #           their extent will be used to crop the Modis Model
@@ -16,9 +16,7 @@ Create_Mask = function(conn, LPIS.DIR, MODIS.MODEL, ZONE_NAME=""){
   
   
   ###### IMPORT field shapefiles ########
-  shapefiles = tibble(
-    direc = list.files(LPIS.DIR, ".*\\.shp", full.names = TRUE)
-    ) %>%
+  shapefiles = tibble(direc = LPIS.FILES) %>%
     pull(direc) %>%
     sapply(st_read)
   

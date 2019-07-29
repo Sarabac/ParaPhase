@@ -9,11 +9,11 @@ Import_Phases = function(conn, Zone_ID, PHASE.DIR, Threshold){
   library(raster)
   library(DBI)
   
-  PixelCrop = tbl(conn, "MaxWeight")
+  PixelCrop = tbl(conn, "MaxWeight") %>% filter(Zone_ID==!!Zone_ID)
   LPISyearCrop = PixelCrop %>%
     dplyr::select(Year, Crop,Winter) %>% distinct() %>% collect() %>% drop_na()
   
-  phase = tibble(dir = list.files(PHASE.DIR, "\\.tif$", full.names = T))%>% 
+  phase = tibble(dir = PHASE.FILES)%>% 
     mutate(name = basename(dir)) %>%
     mutate(Crop = extract_n(name, 3), Year = extract_n(name, 4),
            # Phenology have a lenght 1 or 2

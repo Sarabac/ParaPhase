@@ -1,4 +1,4 @@
-Import_NDVI = function(conn, Zone_ID, MODIS.DIR, Threshold){
+Import_NDVI = function(conn, Zone_ID, MODIS.FILES, Threshold){
   # conn: DBI connection to a database
   # Zone_ID: ID of the the Zone in the database
   # MODIS.DIR: path to a directory containing MODIS NDVI Rasters
@@ -9,11 +9,11 @@ Import_NDVI = function(conn, Zone_ID, MODIS.DIR, Threshold){
   library(raster)
   library(DBI)
   
-  PixelCrop = tbl(conn, "MaxWeight")
+  PixelCrop = tbl(conn, "MaxWeight") %>% filter(Zone_ID==!!Zone_ID)
   LPISyearCrop = PixelCrop %>% # The years avalaibles in the LPIS shapefiles
     dplyr::select(Year) %>% distinct() %>% collect() %>% drop_na()
   
-  modis = tibble(dir=list.files(MODIS.DIR, "_NDVI_.*\\.tif$", full.names = TRUE)) %>% 
+  modis = tibble(dir=MODIS.FILES) %>% 
     mutate(name = basename(dir)) %>% 
     mutate(Year=extract_n(name,4), DOY=extract_n(name,3)) %>%
     extract_date() %>%
