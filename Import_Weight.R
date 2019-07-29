@@ -56,10 +56,22 @@ Import_Weight = function(conn, LPIS.FILES, MODIS.MODEL, ZONE_NAME=""){
   dbWriteTable(conn, "Field", field4Database, append=TRUE)
   RasterID=Load_RasterID(conn, Zone_ID)
   # the cell value of RasterID is the cell index
-  weighting = extract(RasterID, field, df=TRUE,weight=TRUE,
-                   normalizeWeights=FALSE)%>%
-    rename(Field_NR = 1, Coord = 2) %>% mutate(Zone_ID = Zone_ID)
-  # format of weighting : Field_NR, Coord, weight, Zone_ID
+  weighting = tibble(
+    Zone_ID=numeric(), Field_NR=numeric(),
+    Coord=numeric(), weight = numeric()
+    )
+  pb <- txtProgressBar(min=0, max=nrow(field), style=3)
+  for(NR in field$Field_NR){
+    weighting = extract(RasterID,
+                        field[NR,],
+                        df=TRUE,weight=TRUE,
+                        normalizeWeights=FALSE)%>%
+      rename(Field_NR = 1, Coord = 2, weight = 3) %>%
+      mutate(Zone_ID = Zone_ID, Field_NR=NR) %>% 
+      bind_rows(weighting)
+    # format of weighting : Field_NR, Coord, weight, Zone_ID
+    setTxtProgressBar(pb, NR)
+  }
   
   Position = weighting %>% dplyr::select(Zone_ID, Coord) %>%
     distinct()# important because different field can overlap the same position

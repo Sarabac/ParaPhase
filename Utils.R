@@ -41,32 +41,47 @@ extract_n = function(dat, n){
 }
 
 extract_date = function(dat){
+  # turn Year and DOY into a character date
   mutate(dat, DOY = round(as.numeric(DOY))) %>%
     mutate(Date = as.Date(paste(Year,"01-01",sep="-")) + (DOY - 1)) %>% 
     mutate(Date = as.character(Date))
 }
 
-ExtractRaster = function(files, IDfile, value_name,
-                         PixelID, maskRaster){
+ExtractRaster = function(files, IDfile, maskRaster){
+  # files: list of files
+  # IDfiles: list of names of the files and the columns
+  # maskRaster: raster of the position ID and NA for filtered values
   
   Mraster = stack(files, quick=TRUE)
   
   names(Mraster) = IDfile
+  names(maskRaster) = "Position_ID"
   #make the raster fit the mask
   Mrepro = projectRaster(Mraster, maskRaster)
-  Mstack = stack(PixelID, Mrepro)
-  #plot(AllStack)
-  masked = mask(Mstack, maskRaster, maskvalue=FALSE)
+  Mstack = stack(Mrepro, maskRaster)
   #plot(masked)
   # extract all the pixels except the NA values
-  return(as.data.frame(masked, na.rm = TRUE)%>%
-           gather("IDfile",!!value_name, -Pixel_ID))
+  return(as.data.frame(Mstack, na.rm = TRUE))
 }
 
-create_Mask = function(conn, Zone_ID, Threshold, Year, crop=NULL){
-  selectedID = PixelCrop %>% # select the position with a good weight
-    filter(current_Year& Crop==current_Crop& weight>Threshold) %>% pull(Position_ID)
-  maskValues = CellFrame %>%# test for each position if it have been selected
-    mutate(value = if_else(Position_ID%in%selectedID, TRUE, FALSE))
-  maskRaster = setValues(PixelID, maskValues$value)
+create_Mask = function(conn, Zone_ID, Threshold, Year, Crop=NULL){
+  # create a mask raster based on filtered values
+  MaxWeight = tbl(conn, "MaxWeight") %>% filter(Zone_ID==!!Zone_ID)
+  PixelID = Load_RasterID(conn, Zone_ID)
+  
+  # create the dataframe containing the cells index
+  CellFrame = MaxWeight %>%
+    dplyr::select(Position_ID, Coord) %>%
+    distinct() %>% collect() %>% 
+    # link the index of the pixel to it position ID in the database
+    right_join(tibble(Coord=1:ncell(PixelID)), by = "Coord")
+  
+  selectedID = MaxWeight %>% # select the position with a good weight
+    filter(Year==!!Year & weight>Threshold)
+  # if a crop is selected
+  if (!is.null(Crop)){selectedID = selectedID %>% filter(Crop==!!Crop)}
+  selectedID = selectedID %>%  pull(Position_ID)# take the ID
+  maskValues = CellFrame %>%# set NA to not selected positions
+    mutate(value = ifelse(Position_ID%in%selectedID, Position_ID, NA))
+  maskRaster = setValues(PixelID, arrange(maskValues, Coord)$value)
 }

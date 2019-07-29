@@ -8,11 +8,7 @@ Import_Phases = function(conn, Zone_ID, PHASE.DIR, Threshold){
   library(tidyverse)
   library(raster)
   library(DBI)
-  
-  PixelCrop = tbl(conn, "MaxWeight") %>% filter(Zone_ID==!!Zone_ID)
-  LPISyearCrop = PixelCrop %>%
-    dplyr::select(Year, Crop,Winter) %>% distinct() %>% collect() %>% drop_na()
-  
+
   phase = tibble(dir = PHASE.FILES)%>% 
     mutate(name = basename(dir)) %>%
     mutate(Crop = extract_n(name, 3), Year = extract_n(name, 4),
@@ -21,16 +17,10 @@ Import_Phases = function(conn, Zone_ID, PHASE.DIR, Threshold){
     #IDfile: to find each layer in the raster stack and the extracted dataframe
     mutate(IDfile = paste("X", row_number(), sep=""))
   
-  # create the raster containing the cells index
-  PixelID = Load_RasterID(conn, Zone_ID)
-  names(PixelID) = "Pixel_ID"
-  # create the dataframe containing the cells index
-  CellFrame = tibble(Coord=1:ncell(PixelID)) %>% 
-    left_join(dbGetQuery(conn, # get the position ID
-                         "Select Position_ID, Coord from Position where Zone_ID=?",
-                         param=Zone_ID), by = "Coord")
-  
+
   ##### Extract phase informations ####
+  LPISyearCrop = dbGetQuery(conn,
+       "select distinct Year, Crop, Winter from MaxWeight")
   pb <- txtProgressBar(min=0, max=nrow(LPISyearCrop), style=3) 
   for(i in 1:nrow(LPISyearCrop)){
     current_Year = LPISyearCrop$Year[i]
@@ -42,15 +32,11 @@ Import_Phases = function(conn, Zone_ID, PHASE.DIR, Threshold){
     }else{
       selectedYear=c(current_Year)
     }
-    selectedID = PixelCrop %>% # select the position with a good weight
-      filter(current_Year& Crop==current_Crop& weight>Threshold) %>% pull(Position_ID)
-    maskValues = CellFrame %>%# test for each position if it have been selected
-      mutate(value = if_else(Position_ID%in%selectedID, TRUE, FALSE))
-    maskRaster = setValues(PixelID, maskValues$value)
+    
+    maskRaster = create_Mask(conn, Zone_ID, Threshold, current_Year, current_Crop)
     
     for (CY in selectedYear){
-      infoPhase = filter(phase, Year==CY&
-                           Crop==current_Crop)
+      infoPhase = filter(phase, Year==CY& Crop==current_Crop)
       if(!winter){
         infoP = infoPhase # keep everything
       }else if(CY==current_Year-1){
@@ -62,10 +48,9 @@ Import_Phases = function(conn, Zone_ID, PHASE.DIR, Threshold){
       }
       if(!nrow(infoP)){next}#if no data
       
-      rawData = ExtractRaster(infoP$dir, infoP$IDfile,
-                              "DOY", PixelID, maskRaster)
+      rawData = ExtractRaster(infoP$dir, infoP$IDfile, maskRaster)
       Phase = rawData %>% 
-        inner_join(CellFrame, by=c("Pixel_ID"="Coord")) %>% 
+        gather("IDfile","DOY", -Position_ID)%>% 
         inner_join(infoP, by="IDfile") %>%
         extract_date() %>% 
         dplyr::select(Position_ID, Crop, Phase_Date=Date, Phase_Code=P)
