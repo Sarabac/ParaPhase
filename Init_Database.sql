@@ -64,6 +64,13 @@ create table if not exists Phase(
   Phase_Date Date,
   FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
 
+  create table if not exists ErosionEvent(
+    -- Phase transition in a given cell in a given date for a given crop
+    Event_ID INTEGER PRIMARY KEY,
+    Position_ID INTEGER,
+    Event_Date Date,
+    FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
+
 Drop view IF EXISTS MaxWeight;
 CREATE VIEW IF NOT EXISTS MaxWeight
 -- Weight for a given crop in a given Year in a given position

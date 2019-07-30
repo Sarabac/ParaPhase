@@ -64,7 +64,7 @@ ExtractRaster = function(files, IDfile, maskRaster){
   return(as.data.frame(Mstack, na.rm = TRUE))
 }
 
-create_Mask = function(conn, Zone_ID, Threshold, Year, Crop=NULL){
+create_Mask = function(conn, Zone_ID, Threshold, Year=NULL, Crop=NULL){
   # create a mask raster based on filtered values
   MaxWeight = tbl(conn, "MaxWeight") %>% filter(Zone_ID==!!Zone_ID)
   PixelID = Load_RasterID(conn, Zone_ID)
@@ -77,7 +77,11 @@ create_Mask = function(conn, Zone_ID, Threshold, Year, Crop=NULL){
     right_join(tibble(Coord=1:ncell(PixelID)), by = "Coord")
   
   selectedID = MaxWeight %>% # select the position with a good weight
-    filter(Year==!!Year & weight>Threshold)
+    filter(weight>Threshold)
+  #if a Year is selected
+  if (!is.null(Year)){
+    selectedID = selectedID %>% filter(Year==!!Year)
+  }
   # if a crop is selected
   if (!is.null(Crop)){
     selectedID = selectedID %>% filter(Crop==!!Crop)

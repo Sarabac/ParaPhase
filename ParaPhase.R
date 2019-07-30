@@ -11,6 +11,7 @@ PHASE.FILES = list.files("L:/Lucas/phenology/PhenoWin/_DOY",
                      "\\.tif$", full.names = TRUE)
 LPIS.FILES = list.files("L:/Lucas/phenology/_fParaPhase/_input/LPIS/Koennern2",
                       ".*epsg25832\\.shp", full.names = TRUE)
+EROSION.FILES = "L:/Lucas/phenology/_fParaPhase/_input/EROSION_SA/Erosionseregnisse_LSA.shp"
 MODIS.MODEL = "L:/Lucas/phenology/_fParaPhase/_input/MODIS/MOD09Q1_NDVI_2010_001.tif"
 ZONE_NAME = "Koennern"
 OUT.SQLITE = "ParaPhase.sqlite"
