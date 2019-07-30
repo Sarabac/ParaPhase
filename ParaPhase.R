@@ -9,10 +9,10 @@ MODIS.FILES = list.files("L:/Lucas/phenology/_fParaPhase/_input/MODIS",
                       "_NDVI_.*\\.tif$", full.names = TRUE)
 PHASE.FILES = list.files("L:/Lucas/phenology/PhenoWin/_DOY",
                      "\\.tif$", full.names = TRUE)
-LPIS.FILES = list.files("L:/Lucas/phenology/_fParaPhase/_input/LPIS/Koennern",
-                      ".*\\.shp", full.names = TRUE)
+LPIS.FILES = list.files("L:/Lucas/phenology/_fParaPhase/_input/LPIS/Koennern2",
+                      ".*epsg25832\\.shp", full.names = TRUE)
 MODIS.MODEL = "L:/Lucas/phenology/_fParaPhase/_input/MODIS/MOD09Q1_NDVI_2010_001.tif"
-ZONE_NAME = "Uckermark"
+ZONE_NAME = "Koennern"
 OUT.SQLITE = "ParaPhase.sqlite"
 Threshold = 0.75 # threshold for the masks
 
@@ -36,4 +36,9 @@ Import_NDVI(conn, Zone_ID, MODIS.FILES, Threshold)
 # fill the table Phase
 Import_Phases(conn, Zone_ID, PHASE.FILES, Threshold)
 # read the view Filtered_NDVI_Phase_Range in the sqlite database to see the result
+dir.create("output", showWarnings = FALSE)
+tes =tbl(conn, "Filtered_NDVI_Phase_Range") %>% 
+  filter(Zone_ID==!!Zone_ID) %>%
+  collect() %>% 
+  write.csv2(paste(ZONE_NAME, ".csv", sep=""))
 dbDisconnect(conn)

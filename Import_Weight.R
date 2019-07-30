@@ -45,7 +45,8 @@ Import_Weight = function(conn, LPIS.FILES, MODIS.MODEL, ZONE_NAME=""){
   field = shape %>% mutate(Field_NR = row_number())
   
   #### crop RASTER ####
-  ModelRaster = crop(MRaster, field)
+  # snap="out assure that the raster extent is larger than the field extent 
+  ModelRaster = crop(MRaster, field, snap="out")
   names(ModelRaster) = ZONE_NAME
   # also used in the 'name' column in the database
   
@@ -63,9 +64,10 @@ Import_Weight = function(conn, LPIS.FILES, MODIS.MODEL, ZONE_NAME=""){
   pb <- txtProgressBar(min=0, max=nrow(field), style=3)
   # the function that calulate for each polygon the proportion of
   # pixel covered
-  WriteWeight = function(NR){
+  #14584
+  for(NR in 1:nrow(field)){
     polyg = field[NR,]
-    weighting = extract(RasterID,
+    weighting = raster::extract(RasterID,
                         polyg,
                         df=TRUE, weight=TRUE,
                         normalizeWeights=FALSE) %>%
@@ -94,9 +96,8 @@ Import_Weight = function(conn, LPIS.FILES, MODIS.MODEL, ZONE_NAME=""){
     
     dbWriteTable(conn, "Weighting", weighting4database, append=TRUE)
     setTxtProgressBar(pb, NR)
-    return(NULL)
   }
-  lapply(1:nrow(field), WriteWeight)
+  
   return(Zone_ID) # to know in wich Zone we are working on
 }
 

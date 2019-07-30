@@ -48,8 +48,11 @@ Import_Phases = function(conn, Zone_ID, PHASE.DIR, Threshold){
           filter(quantile(stack(dir, quick=TRUE), 0.5)[,1] <=240)#days
       }
       if(!nrow(infoP)){next}#if no data
-      
       rawData = ExtractRaster(infoP$dir, infoP$IDfile, maskRaster)
+      if(!nrow(rawData)){next}# if no weight is higher than the threshold
+      test <<- rawData %>% 
+        gather("IDfile","DOY", -Position_ID)%>% 
+        inner_join(infoP, by="IDfile")
       Phase = rawData %>% 
         gather("IDfile","DOY", -Position_ID)%>% 
         inner_join(infoP, by="IDfile") %>%

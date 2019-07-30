@@ -79,7 +79,9 @@ create_Mask = function(conn, Zone_ID, Threshold, Year, Crop=NULL){
   selectedID = MaxWeight %>% # select the position with a good weight
     filter(Year==!!Year & weight>Threshold)
   # if a crop is selected
-  if (!is.null(Crop)){selectedID = selectedID %>% filter(Crop==!!Crop)}
+  if (!is.null(Crop)){
+    selectedID = selectedID %>% filter(Crop==!!Crop)
+  }
   selectedID = selectedID %>%  pull(Position_ID)# take the ID
   maskValues = CellFrame %>%# set NA to not selected positions
     mutate(value = ifelse(Position_ID%in%selectedID, Position_ID, NA))
