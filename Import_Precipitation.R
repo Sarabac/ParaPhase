@@ -1,7 +1,10 @@
-W.DIR = "L:/Lucas/phenology/ParaPhase"
-setwd(W.DIR)
+
+conn
+Zone_ID = 1
+TIME_PERIODE = 2 # Days
+
 library(tidyverse)
-library(rdrop2)
+library(rdrop2) # to load data from a dropbox folder 
 library(raster)
 source("Utils.R")
 
@@ -12,15 +15,19 @@ typePreci = function(name){
   }
 
 token = drop_auth()
-filePreci = drop_dir("RadolanIndex", dtoken = token)
-
-filePreci= lpreci %>%
+filePreci = drop_dir("RadolanIndex", dtoken = token)%>%
   mutate(Year = extract_n(name, 4),
          DOY = extract_n(name, 3),
          Type = typePreci(name),
          path_local = paste(PRECI.DIR, name, sep="/"),
          downloaded = file.exists(path_local)) %>% 
-  extract_date() 
+  extract_date()
+
+tbl(conn, "ErosionDate") %>%
+  filter(Zone_ID==!!Zone_ID) %>% collect() %>% 
+  crossing(filePreci) %>% 
+  filter(as.Date(Date)<as.Date(Event_Date)) %>% 
+  filter(as.Date(Event_Date)-as.Date(Date) < TIME_PERIODE)
   
 dir.create(PRECI.DIR, showWarnings = FALSE)
 selectedPreci = filePreci[1:5,]

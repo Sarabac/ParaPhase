@@ -59,17 +59,26 @@ create table if not exists Phase(
   -- Phase transition in a given cell in a given date for a given crop
   Phase_ID INTEGER PRIMARY KEY,
   Position_ID INTEGER,
-  Crop VARCHAR,
+  Crop INTEGER,
   Phase_Code INTEGER,
   Phase_Date Date,
   FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
 
-  create table if not exists ErosionEvent(
-    -- Phase transition in a given cell in a given date for a given crop
-    Event_ID INTEGER PRIMARY KEY,
-    Position_ID INTEGER,
-    Event_Date Date,
-    FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
+create table if not exists ErosionEvent(
+  -- Phase transition in a given cell in a given date for a given crop
+  Event_ID INTEGER PRIMARY KEY,
+  Position_ID INTEGER,
+  Event_Date Date,
+  FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
+
+create table if not exists Precipitation(
+  -- Phase transition in a given cell in a given date for a given crop
+  Preci_ID INTEGER PRIMARY KEY,
+  Position_ID INTEGER,
+  Preci_Date Date,
+  Type VARCHAR,
+  Value INTEGER,
+  FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
 
 Drop view IF EXISTS MaxWeight;
 CREATE VIEW IF NOT EXISTS MaxWeight
@@ -144,3 +153,11 @@ from NDVI_Phase_Range
 inner join Crop on Crop=PhenoID
 where julianday(Next_P_Date)-julianday(Pre_P_Date) < 300;
 -- the time periode between two phases is less than half a year
+
+Drop view IF EXISTS ErosionDate;
+CREATE VIEW IF NOT EXISTS ErosionDate
+AS
+Select distinct Zone_ID, Event_Date
+from ErosionEvent e
+INNER JOIN Position p
+on e.Position_ID=p.Position_ID;
