@@ -30,6 +30,7 @@ Import_NDVI = function(conn, Zone_ID, MODIS.FILES, Threshold){
     if(!nrow(infoNDVI)){next} # if no data for this year
     
     maskRaster=create_Mask(conn, Zone_ID, Threshold, current_Year)
+    if(is.null(maskRaster)){next}
     
     # use the function ExtractRaster from the script Utils.R
     rawData = ExtractRaster(infoNDVI$dir, infoNDVI$IDfile, maskRaster)

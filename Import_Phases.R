@@ -35,6 +35,7 @@ Import_Phases = function(conn, Zone_ID, PHASE.DIR, Threshold){
     }
     
     maskRaster = create_Mask(conn, Zone_ID, Threshold, current_Year, current_Crop)
+    if(is.null(maskRaster)){next}
     
     for (CY in selectedYear){
       infoPhase = filter(phase, Year==CY& Crop==current_Crop)
