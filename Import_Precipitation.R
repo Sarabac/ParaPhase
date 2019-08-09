@@ -1,14 +1,14 @@
 library(tidyverse)
-library(rdrop2) # to load data from a dropbox folder 
+#library(rdrop2) # to load data from a dropbox folder 
 library(raster)
 source("Utils.R")
 
-PRECI.CRS = CRS('+init=EPSG:31467')
+PRECI.CRS=CRS("+init=epsg:31467")
 
 typePreci = function(name){
   # extract from the name of the file: "10MM", "SUM", "MAX"
     typ = str_split(name, "_", simplify = TRUE)[,1]
-    return(str_remove(typ, "RADOLANGT"))
+    return(str_remove(typ, "RADOLAN"))
 }
 
 extractInfosPrecis = function(paths){
@@ -57,21 +57,28 @@ loadPreciFromDropbox = function(
   return(selectedFiles$path_local)
 }
 
-Import_Precipitation = function(conn, Zone_ID, paths){
-  Rpreci = stack(paths)
+Import_Precipitation = function(conn, Zone_ID, PRECI.FILES,
+                                PARAMETRIZATION_PERIODE){
+  PreciInfo = selectPreciPeriod(conn, Zone_ID,
+                            PARAMETRIZATION_PERIODE, PRECI.FILES) %>% 
+    mutate(preci_id = paste("X", row_number(), sep=""))
+  
+  Rpreci = stack(PreciInfo$path, quick=TRUE)
   crs(Rpreci) = PRECI.CRS
   position_erosion = tbl(conn, "ErosionEvent") %>% 
     inner_join(tbl(conn, "Position"), by="Position_ID") %>% 
     filter(Zone_ID==!!Zone_ID) %>% 
     pull(Position_ID)
   maskEro = maskFromPosition(conn, position_erosion)
-  preci = ExtractRaster(Rpreci, NULL, maskEro) %>% 
-    gather("path", "Value", -Position_ID)
   
+  print("extract precipitation data")
+  preci = ExtractRaster(Rpreci, PreciInfo$preci_id, maskEro) %>% 
+    gather("preci_id", "Value", -Position_ID)
   preci4database = preci %>% 
-    bind_cols(extractInfosPrecis(preci$path)) %>% 
+    inner_join(PreciInfo, by = c("preci_id"))%>% 
     transmute(Position_ID, Type, Value, Preci_Date = Date)
   
   dbWriteTable(conn, "Precipitation", preci4database, append=TRUE)
+  print("precipitation saved")
 }
 

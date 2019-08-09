@@ -5,8 +5,8 @@ Import_Erosion = function(conn, Zone_ID, EROSION.FILE){
   library(tidyverse)
   library(sf)
   source("Utils.R")
-  
-  Model = create_Mask(conn, Zone_ID, Threshold = 0)
+  posi = dbGetQuery(conn, "select Position_ID from Position where Zone_ID =?", params = Zone_ID)
+  Model = maskFromPosition(conn, posi$Position_ID)
   
   shape = st_read(EROSION.FILE)
   

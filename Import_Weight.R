@@ -46,7 +46,11 @@ Import_Weight = function(conn, LPIS.FILES, MODIS.MODEL, ZONE_NAME=""){
   
   #### crop RASTER ####
   # snap="out assure that the raster extent is larger than the field extent 
-  ModelRaster = crop(MRaster, field, snap="out")
+  extent(extent(field))
+  
+  boxField = st_bbox(field)
+  extentField = extent(boxField$xmin, boxField$xmax, boxField$ymin, boxField$ymax)
+  ModelRaster = crop(MRaster, extentField, snap="out")
   names(ModelRaster) = ZONE_NAME
   # also used in the 'name' column in the database
   
@@ -60,6 +64,10 @@ Import_Weight = function(conn, LPIS.FILES, MODIS.MODEL, ZONE_NAME=""){
   dbWriteTable(conn, "Field", field4Database, append=TRUE)
   RasterID=Load_RasterID(conn, Zone_ID)
   # the cell value of RasterID is the cell index
+  names(RasterID) = "Coord"
+  # write all the possible positions in the zone
+  positions = mutate(as.data.frame(RasterID), Zone_ID=!!Zone_ID)
+  dbWriteTable(conn, "Position", positions, append = TRUE)
   
   pb <- txtProgressBar(min=0, max=nrow(field), style=3)
   # the function that calulate for each polygon the proportion of
@@ -74,13 +82,6 @@ Import_Weight = function(conn, LPIS.FILES, MODIS.MODEL, ZONE_NAME=""){
       rename(Field_NR = 1, Coord = 2, weight = 3) %>%
       mutate(Zone_ID = Zone_ID, Field_NR=polyg$Field_NR)
     # format of weighting : Field_NR, Coord, weight, Zone_ID
-    
-    # important because different field can overlap the same position
-    positionQuery = paste(
-      "insert or ignore INTO Position(Zone_ID, Coord) values ", 
-      paste("(",weighting$Zone_ID,",",weighting$Coord,")", collapse = "," )
-      ) # prevent error on the unique constraint of the databasse
-    dbExecute(conn, positionQuery)
     
     weighting4database = weighting %>%
       inner_join(

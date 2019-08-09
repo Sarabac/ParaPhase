@@ -107,3 +107,14 @@ maskFromPosition = function(conn, Position_IDs){
     arrange(Coord) # to be sur the cell index is in the good order
   return(setValues(PixelID, CellFrame$Position_ID))
 }
+
+# to be removed 
+extract_PhaseDir = function(PHASE.FILES){
+  tibble(dir = PHASE.FILES)%>% 
+    mutate(name = basename(dir)) %>%
+    mutate(Crop = extract_n(name, 3), Year = extract_n(name, 4),
+           # Phenology have a lenght 1 or 2
+           P = coalesce(extract_n(name, 2),extract_n(name, 1))) %>%
+    #IDfile: to find each layer in the raster stack and the extracted dataframe
+    mutate(IDfile = paste("X", row_number(), sep=""))
+}
