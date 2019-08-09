@@ -41,9 +41,12 @@ create table if not exists Position(
 
 create table if not exists Weighting(
   -- link the cell position and the Field
+  W_ID INTEGER PRIMARY KEY,
   Position_ID INTEGER,
   Field_ID INTEGER,
   weight FLOAT,  -- indicate the proportion of the cell covered by the Field
+  Beginning Date,
+  Ending Date,
   FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE,
   FOREIGN KEY (Field_ID) REFERENCES Field(Field_ID) ON DELETE CASCADE);
 
@@ -58,54 +61,67 @@ create table if not exists NDVI(
 create table if not exists Phase(
   -- Phase transition in a given cell in a given date for a given crop
   Phase_ID INTEGER PRIMARY KEY,
-  Position_ID INTEGER,
-  Crop VARCHAR,
+  W_ID INTEGER,
+  Crop INTEGER,
   Phase_Code INTEGER,
   Phase_Date Date,
+  FOREIGN KEY (W_ID) REFERENCES Weighting(W_IDW_ID) ON DELETE CASCADE);
+
+create table if not exists ErosionEvent(
+  -- Phase transition in a given cell in a given date for a given crop
+  Event_ID INTEGER PRIMARY KEY,
+  Position_ID INTEGER,
+  Event_Date Date,
   FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
 
-Drop view IF EXISTS MaxWeight;
-CREATE VIEW IF NOT EXISTS MaxWeight
--- Weight for a given crop in a given Year in a given position
-AS
-Select distinct
-  g.Zone_ID, g.Position_ID, Coord, PhenoID AS Crop, Year, Winter,
-  max(weight) AS  weight
-  from Weighting p
-  inner join Position g
-  on g.Position_ID=p.Position_ID
-  inner join Field f
-  on f.Field_ID=p.Field_ID
-  inner join Crop c
-  on c.LPIS_code = f.LPIS_code
-  GROUP BY g.Position_ID, PhenoID, Year;
+create table if not exists Precipitation(
+  -- Phase transition in a given cell in a given date for a given crop
+  Preci_ID INTEGER PRIMARY KEY,
+  Position_ID INTEGER,
+  Preci_Date Date,
+  Type VARCHAR,
+  Value INTEGER,
+  FOREIGN KEY (Position_ID) REFERENCES Position(Position_ID) ON DELETE CASCADE);
+
+Drop view IF EXISTS WeightedNDVI;
+CREATE VIEW IF NOT EXISTS WeightedNDVI
+  AS
+  Select w.W_ID, n.NDVI_ID, n.NDVI_Date
+  from NDVI n
+  inner join Weighting w
+  on n.Position_ID=w.Position_ID
+  where NDVI_Date >= w.Beginning and NDVI_Date < w.Ending;
 
 Drop view IF EXISTS Previous_Phase;
 CREATE VIEW IF NOT EXISTS Previous_Phase
 AS
-Select NDVI_ID, Phase_ID, Phase_Code AS Pre_P,
+Select n.W_ID, NDVI_ID, p.Phase_ID, Phase_Code AS Pre_P,
 max(Phase_Date) as Pre_P_Date, Crop
-from NDVI n inner join Phase p
-on n.Position_ID=p.Position_ID
+from WeightedNDVI n
+inner join Phase p
+on n.W_ID=p.W_ID
 where NDVI_Date >= Phase_Date
-group by NDVI_ID, Crop;
+group by NDVI_ID, n.W_ID;
 
 
 Drop view IF EXISTS Next_Phase;
 CREATE VIEW IF NOT EXISTS Next_Phase
 AS
-Select NDVI_ID, Phase_ID, Phase_Code AS Next_P,
+Select n.W_ID, NDVI_ID, p.Phase_ID, Phase_Code AS Next_P,
 min(Phase_Date) as Next_P_Date, Crop
-from NDVI n inner join Phase p
-on n.Position_ID=p.Position_ID
+from WeightedNDVI n
+inner join Phase p
+on n.W_ID=p.W_ID
 where NDVI_Date < Phase_Date
-group by NDVI_ID, Crop;
+group by NDVI_ID, n.W_ID;
 
 Drop view IF EXISTS NDVI_Phase_Range;
 CREATE VIEW IF NOT EXISTS NDVI_Phase_Range
 AS
 Select distinct
-z.Zone_ID, z.Name AS Zone_Name, posi.Coord, p.Crop,
+n.NDVI_ID, z.Zone_ID, z.Name AS Zone_Name, posi.Position_ID, posi.Coord,
+w.weight, p.Crop, w.W_ID as Culture_ID, f.Year as Culture_Year, f.Field_ID,
+w.Beginning as Culture_Beginning, w.Ending as Culture_Ending,
 NDVI_Value as NDVI, NDVI_Date,
 Pre_P, Pre_P_Date,
 Next_P, Next_P_Date
@@ -113,18 +129,22 @@ FROM NDVI
 INNER JOIN Previous_Phase p
 ON NDVI.NDVI_ID=p.NDVI_ID
 INNER JOIN Next_Phase n
-ON NDVI.NDVI_ID=n.NDVI_ID and p.Crop=n.Crop
+ON p.W_ID=n.W_ID and p.NDVI_ID=n.NDVI_ID
+INNER JOIN Weighting w
+ON w.W_ID=p.W_ID
+INNER JOIN Field f
+ON f.Field_ID=w.Field_ID
 INNER JOIN Position posi
-ON NDVI.Position_ID=posi.Position_ID
+ON w.Position_ID=posi.Position_ID
 INNER JOIN Zone z
-ON posi.Zone_ID=z.Zone_ID;
+ON posi.Zone_ID=z.Zone_ID ;
 /*
 /!\ if a year is missing, it will consider the closest date of the closest year
 to avoid that, the View Filtered_NDVI_Phase_Range ensure that the
 time periode between two phases is less than a year
 */
-Drop view IF EXISTS Filtered_NDVI_Phase_Range;
-CREATE VIEW IF NOT EXISTS Filtered_NDVI_Phase_Range
+Drop view IF EXISTS NDVI_Phase_Range_Relative;
+CREATE VIEW IF NOT EXISTS NDVI_Phase_Range_Relative
 AS
 Select NDVI_Phase_Range.*, English as CropName,
 Pre_P||"-"||Next_P as Transition,
@@ -134,6 +154,12 @@ julianday(NDVI_Date)-julianday(Pre_P_Date) as NDays,
 as Relative_NDays,
 julianday(Next_P_Date)-julianday(Pre_P_Date) as Phase_Period
 from NDVI_Phase_Range
-inner join Crop on Crop=PhenoID
-where julianday(Next_P_Date)-julianday(Pre_P_Date) < 300;
--- the time periode between two phases is less than half a year
+inner join Crop on Crop=PhenoID;
+
+Drop view IF EXISTS ErosionDate;
+CREATE VIEW IF NOT EXISTS ErosionDate
+AS
+Select distinct Zone_ID, Event_Date
+from ErosionEvent e
+INNER JOIN Position p
+on e.Position_ID=p.Position_ID;
